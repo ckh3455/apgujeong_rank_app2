@@ -101,5 +101,5 @@ token_uri = "https://oauth2.googleapis.com/token"
 
 ## 5) 주의 사항 (보안)
 
-- 서비스계정 키, 스프레드시트 ID는 **코드에 하드코딩하지 않고**, Secrets로만 관리합니다.
+- 서비스계정 키는 **Secrets로만** 관리합니다(절대 커밋 금지). 스프레드시트 ID는 기본값이 코드에 포함되어 있으나, Secrets로 언제든 덮어쓸 수 있습니다.
 - `.streamlit/secrets.toml`은 `.gitignore`에 포함되어 커밋되지 않도록 되어 있습니다.
