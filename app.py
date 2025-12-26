@@ -180,6 +180,24 @@ RANK_LABEL_BOLD = True
 # 한글 폰트 설정 (Matplotlib)
 # =========================
 def set_korean_matplotlib_font() -> str | None:
+    from pathlib import Path
+
+    # 1) 레포에 포함된 폰트 파일 우선 적용(Cloud에서 가장 확실)
+    here = Path(__file__).resolve().parent
+    font_files = [
+        here / "fonts" / "NanumGothic.ttf",
+        here / "fonts" / "NotoSansKR-Regular.ttf",
+        here / "fonts" / "NotoSansKR-Regular.otf",
+    ]
+    for fp in font_files:
+        if fp.exists():
+            font_manager.fontManager.addfont(str(fp))
+            name = font_manager.FontProperties(fname=str(fp)).get_name()
+            matplotlib.rcParams["font.family"] = name
+            matplotlib.rcParams["axes.unicode_minus"] = False
+            return name
+
+    # 2) 시스템 폰트(로컬 PC에서는 이 경로로 잘 잡힘)
     candidates = ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR"]
     available = {f.name for f in font_manager.fontManager.ttflist}
     for name in candidates:
@@ -187,8 +205,10 @@ def set_korean_matplotlib_font() -> str | None:
             matplotlib.rcParams["font.family"] = name
             matplotlib.rcParams["axes.unicode_minus"] = False
             return name
+
     matplotlib.rcParams["axes.unicode_minus"] = False
     return None
+
 
 
 set_korean_matplotlib_font()
