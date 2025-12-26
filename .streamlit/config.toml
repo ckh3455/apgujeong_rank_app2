@@ -1,5 +1,15 @@
-[server]
-headless = true
+main_sheet_id = "메인 스프레드시트 ID"
+main_gid = 0
+max_data_rows = 10337
 
-[client]
-showErrorDetails = true
+log_sheet_id = "로그 스프레드시트 ID"
+log_gid = 0
+
+[gcp_service_account]
+type = "service_account"
+project_id = "YOUR_PROJECT_ID"
+private_key_id = "YOUR_PRIVATE_KEY_ID"
+private_key = "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDDr7m+z8SC3H4/\n4O8bEXdJfJZL7a1h0PN3TmuHbUmdgKVULLeEmTjkoNk+Rg+cL0wjEssBVMAOjdM+\nRXwslkDQaUAaOiErM0RqgOuoW5kU85i2DcGdaG1GDQeX0GKm59bMEBYJg+pnvHnd\nSAbsMt1JrcJyl6Z1obR1JPBNkWqSRzWdsaOlw+cy82dJeTllwW8sFjgtiIEf/D2v\nHcp54wgfpV9ZUGlX6n9rOwwVmgbXM8EtF8zs3+N08eKerkr67SyC/gnb8BPenJFk\n2tPdhbJAd7EwQp9MGrIXlLy4EuUI1J879anKOXI+CHo+t0ZiQIFT8mxCxR/Cekcf\nFhbGZHqhAgMBAAECggEACu8QJq25kgLw7kUgBw1S8su1Is6dGp3lZKarPRi+/Wpu\nkm/3Mb+qnU0G0RhyudbYtGL8mHlG9pPibZR4q43FAarH1qSl2CHtXN1m4sl6GbYX\nXnYRTz1s/EuGakCjVSZswDUr42HiteN4PwQjGDfVWSRjfNSlYTrk+DX//qLf51wI\nazG3S+6lHrn31gYRAC5Z+tM1WlcslAMWso1GK9EHLq8dvxhTfEla8xNs1FSF+04y\nnxEGDUmOXIEp2byN3KaBaw9i9oiLj4bZnnQ27cV8m17/Z8sdTQcj6q40qd0lGNma\nF3Fc6guFwKpMiBvC7tzIgm5ktfcbVT6ipy3xh1nQIwKBgQDKf1rlBtHWARrD4zcO\nE0OxFrm9z+Ntn6nK7YNIbxcjjatTXJIg+Lt4EXlVhguczTSa9YFnMOWHGiTqMeqz\nu9r4H00xWb8Uh024wXdDdKi6zzqKs+OoJ/mE6LpgOZWvVU73qPyOI7bzfh79ipHT\nls19OzMtD+Pz9FLzJ8x6oWllRwKBgQD3Y64z/W74UMx4MgfWyIiRPzZ1J3Bqg9RH\nyVqbIjbSH1ODe/af8y7xOpLkN7lpG3M3mzkPDwYeXQBId7A4AKaDvqVp7XrZ4yt8\nFzUAF6UX6fp1uHIjNatnngZwY+/CtfR9Z0VJClKk3GiX+abQiSu6YnB4ptC4qWUH\n8JS/vkI01wKBgDti5jFMsrVkVYklVbwXAj8pPwffs/8uWAlfZqUTj2Gp5pjoCSMK\nT1CDL2ZZjYZK2Cap4W119ZqNnE3incZgTXN/GpBilZtbovuQIX3y9Jj0tWKAJz/l\nmVPVPPODb9af2izfrlGxP7JhRo1s2h+HlnQnrHaGtn+RI9KT1XARbmt5AoGAA7IO\ngSJRDQ6P71+39EJsn9bU5m0fZcfwXN4qJ1UcgokLQ1SPu5XzZpEcbqJSd7p8PyFn\nec0cp0l2Xp7DGCMSWbd4Wxu8ERMurBzgos63naLWJfoKYnJDzDl1GSq1AzCapWDs\njQnFcEcGnPaSwly6NX+Q9IxxY8DMDJFQd4jNDmMCgYBe8SXSsPqHTD46AyORJu9C\nu6RA6pJqPTOV2uOMZCyN0c/HG2pEYwF7N364ZM6CijgTw8xZzSh7DN3Go1Kw4L7j\npaEfT/C80O8CHJeMeKPV4O/x/fA5jD37jhsU+DPba0hZo7sn35HtXyd2CdrqcHow\n4kDFXwpw3xUq9TaheZYeFQ==\n-----END PRIVATE KEY-----\n"
+client_email = "YOUR_SA_EMAIL@YOUR_PROJECT.iam.gserviceaccount.com"
+client_id = "YOUR_CLIENT_ID"
+token_uri = "https://oauth2.googleapis.com/token"
