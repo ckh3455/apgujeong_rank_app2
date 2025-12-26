@@ -8,6 +8,63 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
+def setup_korean_font():
+    """
+    Streamlit Cloud(리눅스)에서는 윈도우 기본 한글 폰트(맑은 고딕 등)가 없어서
+    Matplotlib 그래프에서 한글이 깨질 수 있습니다.
+
+    우선순위:
+      1) 레포에 포함된 폰트 파일 (./fonts/*.ttf, *.otf)
+      2) 시스템에 설치된 한글 폰트 탐색
+    """
+    try:
+        import os
+        from pathlib import Path
+        # 1) 레포 포함 폰트(가장 확실)
+        here = Path(__file__).resolve().parent
+        font_candidates = [
+            here / "fonts" / "NanumGothic.ttf",
+            here / "fonts" / "NanumGothic.otf",
+            here / "fonts" / "NotoSansKR-Regular.otf",
+            here / "fonts" / "NotoSansKR-Regular.ttf",
+            here / "fonts" / "NotoSansCJKkr-Regular.otf",
+        ]
+        for fp in font_candidates:
+            if fp.exists():
+                font_manager.fontManager.addfont(str(fp))
+                name = font_manager.FontProperties(fname=str(fp)).get_name()
+                plt.rcParams["font.family"] = name
+                plt.rcParams["axes.unicode_minus"] = False
+                return name
+
+        # 2) 시스템 설치 폰트(있으면 사용)
+        candidates = ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans CJK KR", "Noto Sans KR"]
+        for name in candidates:
+            try:
+                plt.rcParams["font.family"] = name
+                plt.rcParams["axes.unicode_minus"] = False
+                # 실제로 적용 가능한지 간단히 체크(폰트 패밀리로 매칭되는지)
+                _ = font_manager.findfont(font_manager.FontProperties(family=name), fallback_to_default=False)
+                return name
+            except Exception:
+                continue
+
+        # 마지막: 폰트 검색(느리지만 한번만)
+        for f in font_manager.fontManager.ttflist:
+            nm = (getattr(f, "name", "") or "").lower()
+            if any(k in nm for k in ["nanum", "malgun", "applegothic", "noto sans cjk", "noto sans kr"]):
+                plt.rcParams["font.family"] = f.name
+                plt.rcParams["axes.unicode_minus"] = False
+                return f.name
+
+        # 실패: 기본 폰트로 진행(한글은 깨질 수 있음)
+        plt.rcParams["axes.unicode_minus"] = False
+        return None
+    except Exception:
+        return None
+
+
+
 # =========================
 # 기본(하드코딩) 시트 설정
 # - Secrets에 값을 넣으면 그 값이 우선합니다.
@@ -410,11 +467,28 @@ def load_from_gsheet(spreadsheet_id: str, gid: int = 0) -> pd.DataFrame:
     ws = open_worksheet_by_gid(sh, gid)
 
     values = ws.get_all_values()
-    if len(values) < 3:
-        raise ValueError("시트에 데이터가 충분하지 않습니다. (헤더 2행 + 데이터 필요)")
+    if not values:
+        raise ValueError("시트에 데이터가 없습니다.")
 
-    header = [str(x).strip() for x in values[1]]  # 2행
-    data = values[2:]  # 3행부터
+    # 헤더(컬럼) 행 자동 탐지
+    # - 기존 스크립트는 '2행=헤더, 3행부터=데이터'를 전제로 했습니다.
+    # - 하지만 어떤 시트는 1~2행이 그룹/설명행(예: '30평형대')일 수 있어,
+    #   '구역' 컬럼이 포함된 첫 행을 헤더로 간주합니다.
+    header_row_index = None
+    for i, row in enumerate(values[:50]):  # 상단 50행 내에서 탐색
+        norm = [str(x).strip().replace("\n", " ") for x in row]
+        if "구역" in norm:
+            header_row_index = i
+            break
+
+    if header_row_index is None:
+        # fallback: 기존 동작(2행 헤더 가정)
+        if len(values) < 3:
+            raise ValueError("시트에 데이터가 충분하지 않습니다. (헤더 2행 + 데이터 필요)")
+        header_row_index = 1
+
+    header = [str(x).strip() for x in values[header_row_index]]
+    data = values[header_row_index + 1:]
     df = pd.DataFrame(data, columns=header)
     return _normalize_columns(df)
 
