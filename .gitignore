@@ -1,6 +1,10 @@
+# Streamlit secrets (절대 커밋 금지)
 .streamlit/secrets.toml
 
+# Python
 __pycache__/
 *.pyc
-
+.venv/
+venv/
+.env
 .DS_Store
