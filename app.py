@@ -10,54 +10,63 @@ from matplotlib import font_manager
 
 def setup_korean_font():
     """
-    Streamlit Cloud(리눅스)에서는 윈도우 기본 한글 폰트(맑은 고딕 등)가 없어서
-    Matplotlib 그래프에서 한글이 깨질 수 있습니다.
-
-    우선순위:
-      1) 레포에 포함된 폰트 파일 (./fonts/*.ttf, *.otf)
-      2) 시스템에 설치된 한글 폰트 탐색
+    Streamlit Cloud(리눅스)에서 Matplotlib 한글 깨짐을 막기 위한 폰트 설정.
+    - 레포의 ./fonts 폴더에 .ttf/.otf를 넣으면 자동으로 탐지/등록합니다.
+    - 없으면 시스템 설치 폰트를 탐색합니다.
     """
     try:
-        import os
         from pathlib import Path
-        # 1) 레포 포함 폰트(가장 확실)
-        here = Path(__file__).resolve().parent
-        font_candidates = [
-            here / "fonts" / "NanumGothic.ttf",
-            here / "fonts" / "NanumGothic.otf",
-            here / "fonts" / "NotoSansKR-Regular.otf",
-            here / "fonts" / "NotoSansKR-Regular.ttf",
-            here / "fonts" / "NotoSansCJKkr-Regular.otf",
-        ]
-        for fp in font_candidates:
-            if fp.exists():
-                font_manager.fontManager.addfont(str(fp))
-                name = font_manager.FontProperties(fname=str(fp)).get_name()
-                plt.rcParams["font.family"] = name
-                plt.rcParams["axes.unicode_minus"] = False
-                return name
+        import os
 
-        # 2) 시스템 설치 폰트(있으면 사용)
-        candidates = ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans CJK KR", "Noto Sans KR"]
+        here = Path(__file__).resolve().parent
+        fonts_dir = here / "fonts"
+
+        # 1) 레포 포함 폰트 자동 탐지
+        if fonts_dir.exists() and fonts_dir.is_dir():
+            font_files = []
+            for ext in ("*.ttf", "*.otf", "*.ttc"):
+                font_files.extend(sorted(fonts_dir.glob(ext)))
+
+            # 선호 키워드(가능하면 한글 폰트 우선)
+            prefer = ["notosanskr", "noto sans kr", "notosanscjk", "nanum", "malgun", "applegothic"]
+            def score(p: Path) -> int:
+                name = p.name.lower()
+                for i, kw in enumerate(prefer):
+                    if kw.replace(" ", "") in name.replace(" ", ""):
+                        return 100 - i
+                return 0
+
+            font_files.sort(key=score, reverse=True)
+
+            for fp in font_files:
+                try:
+                    font_manager.fontManager.addfont(str(fp))
+                    # 캐시를 다시 읽도록 유도(환경에 따라 필요)
+                    try:
+                        font_manager._load_fontmanager(try_read_cache=False)
+                    except Exception:
+                        pass
+
+                    name = font_manager.FontProperties(fname=str(fp)).get_name()
+                    plt.rcParams["font.family"] = name
+                    plt.rcParams["font.sans-serif"] = [name]
+                    plt.rcParams["axes.unicode_minus"] = False
+                    return name
+                except Exception:
+                    continue
+
+        # 2) 시스템 설치 폰트 탐색
+        candidates = ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR"]
         for name in candidates:
             try:
-                plt.rcParams["font.family"] = name
-                plt.rcParams["axes.unicode_minus"] = False
-                # 실제로 적용 가능한지 간단히 체크(폰트 패밀리로 매칭되는지)
                 _ = font_manager.findfont(font_manager.FontProperties(family=name), fallback_to_default=False)
+                plt.rcParams["font.family"] = name
+                plt.rcParams["font.sans-serif"] = [name]
+                plt.rcParams["axes.unicode_minus"] = False
                 return name
             except Exception:
                 continue
 
-        # 마지막: 폰트 검색(느리지만 한번만)
-        for f in font_manager.fontManager.ttflist:
-            nm = (getattr(f, "name", "") or "").lower()
-            if any(k in nm for k in ["nanum", "malgun", "applegothic", "noto sans cjk", "noto sans kr"]):
-                plt.rcParams["font.family"] = f.name
-                plt.rcParams["axes.unicode_minus"] = False
-                return f.name
-
-        # 실패: 기본 폰트로 진행(한글은 깨질 수 있음)
         plt.rcParams["axes.unicode_minus"] = False
         return None
     except Exception:
@@ -180,24 +189,6 @@ RANK_LABEL_BOLD = True
 # 한글 폰트 설정 (Matplotlib)
 # =========================
 def set_korean_matplotlib_font() -> str | None:
-    from pathlib import Path
-
-    # 1) 레포에 포함된 폰트 파일 우선 적용(Cloud에서 가장 확실)
-    here = Path(__file__).resolve().parent
-    font_files = [
-        here / "fonts" / "NanumGothic.ttf",
-        here / "fonts" / "NotoSansKR-Regular.ttf",
-        here / "fonts" / "NotoSansKR-Regular.otf",
-    ]
-    for fp in font_files:
-        if fp.exists():
-            font_manager.fontManager.addfont(str(fp))
-            name = font_manager.FontProperties(fname=str(fp)).get_name()
-            matplotlib.rcParams["font.family"] = name
-            matplotlib.rcParams["axes.unicode_minus"] = False
-            return name
-
-    # 2) 시스템 폰트(로컬 PC에서는 이 경로로 잘 잡힘)
     candidates = ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans KR", "Noto Sans CJK KR"]
     available = {f.name for f in font_manager.fontManager.ttflist}
     for name in candidates:
@@ -205,10 +196,8 @@ def set_korean_matplotlib_font() -> str | None:
             matplotlib.rcParams["font.family"] = name
             matplotlib.rcParams["axes.unicode_minus"] = False
             return name
-
     matplotlib.rcParams["axes.unicode_minus"] = False
     return None
-
 
 
 set_korean_matplotlib_font()
