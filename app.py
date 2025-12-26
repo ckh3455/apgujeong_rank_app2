@@ -45,15 +45,17 @@ PROMO_TEXT_HTML = """
 
 
 # =========================
-# 고정 설정(화면에 표시하지 않음)
-# - Google 서비스계정은 Streamlit Secrets로 주입
+# 설정 (Streamlit Secrets)
+# - Public 레포 기준으로, 스프레드시트 ID를 코드에 하드코딩하지 않습니다.
+# - 필수: main_sheet_id
+# - 선택: log_sheet_id (없으면 조회 로그 기록을 건너뜁니다)
 # =========================
-MAIN_SPREADSHEET_ID = st.secrets.get("main_sheet_id", "1QGSM-mICX9KYa5Izym6sFKVaWwO-o0j86V-KmJ-w0IM")
+MAIN_SPREADSHEET_ID = str(st.secrets.get("main_sheet_id", "")).strip()
 MAIN_GID = int(st.secrets.get("main_gid", 0))
 MAX_DATA_ROWS = int(st.secrets.get("max_data_rows", 10337))
 
-# 조회 로그 기록용 시트
-LOG_SPREADSHEET_ID = st.secrets.get("log_sheet_id", "1-V5Ux8yto_8WE6epumN1aWT_D5t_1Dx14VWBZ0SvbbU")
+# 조회 로그 기록용 시트(선택)
+LOG_SPREADSHEET_ID = str(st.secrets.get("log_sheet_id", "")).strip()
 LOG_GID = int(st.secrets.get("log_gid", 0))
 
 # =========================
@@ -128,6 +130,46 @@ set_korean_matplotlib_font()
 # UI 기본
 # =========================
 st.set_page_config(page_title="압구정 공시가격 랭킹", layout="centered")
+# =========================
+# 배포/실행을 위한 Secrets 검증
+# =========================
+def _validate_runtime_config() -> None:
+    missing: list[str] = []
+
+    if not MAIN_SPREADSHEET_ID:
+        missing.append("main_sheet_id")
+
+    has_sa_info = ("gcp_service_account" in st.secrets) or bool(str(st.secrets.get("SERVICE_ACCOUNT_FILE", "")).strip())
+    if not has_sa_info:
+        missing.append("gcp_service_account 또는 SERVICE_ACCOUNT_FILE")
+
+    if missing:
+        st.error(
+            "앱 실행에 필요한 Streamlit Secrets 설정이 없습니다: "
+            + ", ".join(missing)
+            + "\n\n"
+            + "Streamlit Cloud에서는 Settings → Secrets에 아래 예시를 TOML로 등록하세요.\n\n"
+            + "main_sheet_id = \"메인 스프레드시트 ID\"\n"
+            + "main_gid = 0\n"
+            + "max_data_rows = 10337\n\n"
+            + "log_sheet_id = \"(선택) 로그 스프레드시트 ID\"\n"
+            + "log_gid = 0\n\n"
+            + "[gcp_service_account]\n"
+            + "type = \"service_account\"\n"
+            + "project_id = \"...\"\n"
+            + "private_key_id = \"...\"\n"
+            + "private_key = \"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n\"\n"
+            + "client_email = \"...@....iam.gserviceaccount.com\"\n"
+            + "client_id = \"...\"\n"
+            + "token_uri = \"https://oauth2.googleapis.com/token\"\n"
+        )
+        st.stop()
+
+    if not LOG_SPREADSHEET_ID:
+        st.warning("log_sheet_id가 설정되지 않아 조회 로그 기록을 비활성화합니다.")
+
+_validate_runtime_config()
+
 st.markdown(
     """
     <style>
@@ -156,17 +198,30 @@ def get_gspread_client():
     import gspread
     from google.oauth2.service_account import Credentials
 
-    if "gcp_service_account" not in st.secrets:
-        raise RuntimeError(
-            "Streamlit Secrets에 'gcp_service_account'가 없습니다. "
-            "서비스계정 JSON을 secrets에 넣어주세요."
-        )
-
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
-    creds = Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]), scopes=scopes)
+
+    # 1) Streamlit Cloud 방식: secrets에 gcp_service_account가 있으면 그걸 사용
+    if "gcp_service_account" in st.secrets:
+        info = dict(st.secrets["gcp_service_account"])
+        # Streamlit Secrets/TOML에서 private_key에 '\n'이 들어가는 경우가 많아 보정
+        pk = info.get("private_key")
+        if isinstance(pk, str):
+            info["private_key"] = pk.replace("\\n", "\n")
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+        return gspread.authorize(creds)
+
+    # 2) 로컬/원본 방식: SERVICE_ACCOUNT_FILE 경로로 인증
+    sa_path = str(st.secrets.get("SERVICE_ACCOUNT_FILE", "")).strip()
+    if not sa_path:
+        raise RuntimeError(
+            "Google 인증 정보가 없습니다. Streamlit Secrets에 [gcp_service_account]를 넣거나 "
+            "로컬 실행 시 SERVICE_ACCOUNT_FILE 경로를 지정해 주세요."
+        )
+
+    creds = Credentials.from_service_account_file(sa_path, scopes=scopes)
     return gspread.authorize(creds)
 
 
@@ -297,6 +352,9 @@ def format_ho_for_log(ho: int) -> str:
 
 
 def append_lookup_log(zone: str, dong: int, ho: int, complex_name: str, event: str = "조회") -> None:
+    # log_sheet_id가 없으면 로그 기록을 건너뜁니다.
+    if not LOG_SPREADSHEET_ID:
+        return
     now = datetime.now(ZoneInfo("Asia/Seoul"))
     date_ymd = now.strftime("%Y-%m-%d")
     hhmm = now.strftime("%H:%M")
