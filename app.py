@@ -8,6 +8,17 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
+# =========================
+# 기본(하드코딩) 시트 설정
+# - Secrets에 값을 넣으면 그 값이 우선합니다.
+# - 원래 로컬 스크립트에 있던 기본값을 유지합니다.
+# =========================
+DEFAULT_MAIN_SHEET_ID = "1QGSM-mICX9KYa5Izym6sFKVaWwO-o0j86V-KmJ-w0IM"
+DEFAULT_LOG_SHEET_ID = "1-V5Ux8yto_8WE6epumN1aWT_D5t_1Dx14VWBZ0SvbbU"
+DEFAULT_MAIN_GID = 0
+DEFAULT_LOG_GID = 0
+DEFAULT_MAX_DATA_ROWS = 10337
+
 
 # =========================
 # 사용자 안내/라벨
@@ -50,13 +61,13 @@ PROMO_TEXT_HTML = """
 # - 필수: main_sheet_id
 # - 선택: log_sheet_id (없으면 조회 로그 기록을 건너뜁니다)
 # =========================
-MAIN_SPREADSHEET_ID = str(st.secrets.get("main_sheet_id", "")).strip()
-MAIN_GID = int(st.secrets.get("main_gid", 0))
-MAX_DATA_ROWS = int(st.secrets.get("max_data_rows", 10337))
+MAIN_SPREADSHEET_ID = str(st.secrets.get("main_sheet_id", DEFAULT_MAIN_SHEET_ID)).strip()
+MAIN_GID = int(st.secrets.get("main_gid", DEFAULT_MAIN_GID))
+MAX_DATA_ROWS = int(st.secrets.get("max_data_rows", DEFAULT_MAX_DATA_ROWS))
 
 # 조회 로그 기록용 시트(선택)
-LOG_SPREADSHEET_ID = str(st.secrets.get("log_sheet_id", "")).strip()
-LOG_GID = int(st.secrets.get("log_gid", 0))
+LOG_SPREADSHEET_ID = str(st.secrets.get("log_sheet_id", DEFAULT_LOG_SHEET_ID)).strip()
+LOG_GID = int(st.secrets.get("log_gid", DEFAULT_LOG_GID))
 
 # =========================
 # 차트 스타일(스크립트 내에서만 수정)
@@ -145,7 +156,7 @@ def _validate_runtime_config() -> None:
 
     if missing:
         st.error(
-            "앱 실행에 필요한 Streamlit Secrets 설정이 없습니다: "
+            "앱 실행에 필요한 Streamlit Secrets 설정이 없습니다(인증 정보가 필요합니다): "
             + ", ".join(missing)
             + "\n\n"
             + "Streamlit Cloud에서는 Settings → Secrets에 아래 예시를 TOML로 등록하세요.\n\n"
