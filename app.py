@@ -868,7 +868,7 @@ except Exception as e:
     st.stop()
 
 
-left, right = st.columns(2, gap="large")
+left, right = st.columns([1, 2], gap="large")
 
 with left:
     st.subheader("구역 내 연도별 랭킹")
@@ -915,29 +915,33 @@ with right:
     a_plot["rank"] = a_plot["rank"].astype(int)
     a_plot = a_plot.sort_values("연도")
 
-    st.markdown("**구역 내 순위 변화(연도별)**")
-    if z_plot.empty:
-        st.info("구역 내 순위 그래프를 그릴 데이터가 없습니다.")
-    else:
-        fig1 = plot_rank_line(
-            years=z_plot["연도"].tolist(),
-            ranks=z_plot["rank"].tolist(),
-            title=f"{zone} / {complex_name} / {dong}동 / {ho}호  (구역 내 순위)",
-            style=ZONE_RANK_STYLE,
-        )
-        st.pyplot(fig1, use_container_width=True)
+    top_l, top_r = st.columns(2, gap="medium")
 
-    st.markdown("**압구정 전체 순위 변화(연도별)**")
-    if a_plot.empty:
-        st.info("압구정 전체 순위 그래프를 그릴 데이터가 없습니다.")
-    else:
-        fig2 = plot_rank_line(
-            years=a_plot["연도"].tolist(),
-            ranks=a_plot["rank"].tolist(),
-            title=f"{zone} / {complex_name} / {dong}동 / {ho}호  (압구정 전체 순위)",
-            style=ALL_RANK_STYLE,
-        )
-        st.pyplot(fig2, use_container_width=True)
+    with top_l:
+        st.markdown("**구역 내 순위 변화(연도별)**")
+        if z_plot.empty:
+            st.info("구역 내 순위 그래프를 그릴 데이터가 없습니다.")
+        else:
+            fig1 = plot_rank_line(
+                years=z_plot["연도"].tolist(),
+                ranks=z_plot["rank"].tolist(),
+                title=f"{zone} / {complex_name} / {dong}동 / {ho}호  (구역 내 순위)",
+                style=ZONE_RANK_STYLE,
+            )
+            st.pyplot(fig1, use_container_width=True)
+
+    with top_r:
+        st.markdown("**압구정 전체 순위 변화(연도별)**")
+        if a_plot.empty:
+            st.info("압구정 전체 순위 그래프를 그릴 데이터가 없습니다.")
+        else:
+            fig2 = plot_rank_line(
+                years=a_plot["연도"].tolist(),
+                ranks=a_plot["rank"].tolist(),
+                title=f"{zone} / {complex_name} / {dong}동 / {ho}호  (압구정 전체 순위)",
+                style=ALL_RANK_STYLE,
+            )
+            st.pyplot(fig2, use_container_width=True)
 
     st.markdown("**2016년 유사 가격 타구역 비교(가격 추이)**")
 
@@ -984,3 +988,4 @@ with right:
                 cmp_label=f"유사타구역: {cmp_zone}",
             )
             st.pyplot(fig3, use_container_width=True)
+
