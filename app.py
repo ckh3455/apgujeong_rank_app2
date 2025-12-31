@@ -782,6 +782,8 @@ except Exception as e:
 year_cols_all = _detect_year_cols(df)
 df_num = _coerce_numeric(df, year_cols_all)
 year_cols = _filter_year_cols_with_data(df_num, year_cols_all)
+# 요청: 공시가격은 2016년부터 사용
+year_cols = [y for y in year_cols if int(y) >= 2016]
 if not year_cols:
     st.error("연도 컬럼은 있으나 실제 데이터가 있는 연도가 없습니다.")
     st.stop()
@@ -954,44 +956,15 @@ st.markdown(
 
 st.divider()
 
-# =========================
-# 랭킹 표
-# =========================
-st.subheader("연도별 랭킹 표")
-
-st.markdown("**구역 내 연도별 랭킹**")
-st.dataframe(
-    zone_table,
-    use_container_width=True,
-    hide_index=True,
-    height=tight_height(len(zone_table)),
-    column_config={
-        "연도": st.column_config.NumberColumn(format="%d", width="small"),
-        "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
-        "구역 내 랭킹": st.column_config.TextColumn(width="small"),
-    },
-)
-
-st.markdown("**압구정 전체 연도별 랭킹**")
-st.dataframe(
-    all_table,
-    use_container_width=True,
-    hide_index=True,
-    height=tight_height(len(all_table)),
-    column_config={
-        "연도": st.column_config.NumberColumn(format="%d", width="small"),
-        "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
-        "압구정 전체 랭킹": st.column_config.TextColumn(width="small"),
-    },
-)
-
-st.divider()
 
 # =========================
-# 그래프 (요청: 좌우 → 아래위 3단)
+# 하단 표/그래프 레이아웃 (요청 반영)
+#   1행: (좌) 구역 내 연도별 랭킹 표  | (우) 구역 내 순위변화 그래프
+#   2행: (좌) 압구정 전체 연도별 랭킹 표 | (우) 압구정 전체 순위변화 그래프
+#   3행: 유사 타구역 비교 그래프 (전체 폭)
 # =========================
-st.subheader("순위 변화 그래프 (3단)")
 
+# 랭킹 그래프용 데이터 준비
 z_plot = zone_table.copy()
 z_plot["rank"] = z_plot["구역 내 랭킹"].apply(_parse_rank_text)
 z_plot = z_plot.dropna(subset=["rank"]).copy()
@@ -1006,29 +979,67 @@ a_plot["연도"] = a_plot["연도"].astype(int)
 a_plot["rank"] = a_plot["rank"].astype(int)
 a_plot = a_plot.sort_values("연도")
 
-st.markdown("**1) 구역 내 순위 변화(연도별)**")
-if z_plot.empty:
-    st.info("구역 내 순위 그래프를 그릴 데이터가 없습니다.")
-else:
-    fig1 = plot_rank_line(
-        years=z_plot["연도"].tolist(),
-        ranks=z_plot["rank"].tolist(),
-        title=f"{zone} / {dong}동 / {ho}호  (구역 내 순위)",
-        style=ZONE_RANK_STYLE,
-    )
-    st.pyplot(fig1, use_container_width=True)
+st.subheader("하단 분석 결과")
 
-st.markdown("**2) 압구정 전체 순위 변화(연도별)**")
-if a_plot.empty:
-    st.info("압구정 전체 순위 그래프를 그릴 데이터가 없습니다.")
-else:
-    fig2 = plot_rank_line(
-        years=a_plot["연도"].tolist(),
-        ranks=a_plot["rank"].tolist(),
-        title=f"{zone} / {dong}동 / {ho}호  (압구정 전체 순위)",
-        style=ALL_RANK_STYLE,
+# ---------- 1행 ----------
+l1, r1 = st.columns(2, gap="large")
+with l1:
+    st.markdown("**구역 내 연도별 랭킹**")
+    st.dataframe(
+        zone_table,
+        use_container_width=True,
+        hide_index=True,
+        height=tight_height(len(zone_table)),
+        column_config={
+            "연도": st.column_config.NumberColumn(format="%d", width="small"),
+            "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
+            "구역 내 랭킹": st.column_config.TextColumn(width="small"),
+        },
     )
-    st.pyplot(fig2, use_container_width=True)
+
+with r1:
+    st.markdown("**구역 내 순위 변화(연도별)**")
+    if z_plot.empty:
+        st.info("구역 내 순위 그래프를 그릴 데이터가 없습니다.")
+    else:
+        fig1 = plot_rank_line(
+            years=z_plot["연도"].tolist(),
+            ranks=z_plot["rank"].tolist(),
+            title=f"{zone} / {dong}동 / {ho}호  (구역 내 순위)",
+            style=ZONE_RANK_STYLE,
+        )
+        st.pyplot(fig1, use_container_width=True)
+
+# ---------- 2행 ----------
+l2, r2 = st.columns(2, gap="large")
+with l2:
+    st.markdown("**압구정 전체 연도별 랭킹**")
+    st.dataframe(
+        all_table,
+        use_container_width=True,
+        hide_index=True,
+        height=tight_height(len(all_table)),
+        column_config={
+            "연도": st.column_config.NumberColumn(format="%d", width="small"),
+            "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
+            "압구정 전체 랭킹": st.column_config.TextColumn(width="small"),
+        },
+    )
+
+with r2:
+    st.markdown("**압구정 전체 순위 변화(연도별)**")
+    if a_plot.empty:
+        st.info("압구정 전체 순위 그래프를 그릴 데이터가 없습니다.")
+    else:
+        fig2 = plot_rank_line(
+            years=a_plot["연도"].tolist(),
+            ranks=a_plot["rank"].tolist(),
+            title=f"{zone} / {dong}동 / {ho}호  (압구정 전체 순위)",
+            style=ALL_RANK_STYLE,
+        )
+        st.pyplot(fig2, use_container_width=True)
+
+st.divider()
 
 st.markdown("**3) 2016년 유사 가격 타구역 비교(가격 추이)**")
 
