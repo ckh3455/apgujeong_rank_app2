@@ -187,6 +187,13 @@ RANK_LABEL_FONTSIZE = 9
 RANK_LABEL_Y_OFFSET = -22  # (음수일수록 위로 더 올라감)
 RANK_LABEL_BOLD = True
 
+# 표/그래프 높이(좌우 패널 맞춤)
+RANK_PANEL_HEIGHT_PX = 560   # 좌측 표, 우측 그래프를 동일 높이로 맞춤
+RANK_FIG_DPI = 130
+RANK_FIG_HEIGHT_IN = RANK_PANEL_HEIGHT_PX / RANK_FIG_DPI
+RANK_TABLE_ROW_HEIGHT_PX = 24  # CSS로 줄일 행 높이
+
+
 # =========================
 # 한글 폰트 설정 (Matplotlib)
 # =========================
@@ -262,6 +269,16 @@ st.markdown(
     <style>
       .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1100px; }
       .small-note { color: rgba(49,51,63,.65); font-size: 0.92rem; }
+    
+      /* DataFrame row height compact */
+      div[data-testid="stDataFrame"] .ag-row { height: 24px !important; }
+      div[data-testid="stDataFrame"] .ag-cell { line-height: 22px !important; padding-top: 2px !important; padding-bottom: 2px !important; }
+      div[data-testid="stDataFrame"] .ag-header-cell { padding-top: 2px !important; padding-bottom: 2px !important; }
+      /* Fallback selectors (Streamlit versions) */
+      .stDataFrame .ag-row { height: 24px !important; }
+      .stDataFrame .ag-cell { line-height: 22px !important; padding-top: 2px !important; padding-bottom: 2px !important; }
+      .stDataFrame .ag-header-cell { padding-top: 2px !important; padding-bottom: 2px !important; }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -271,9 +288,9 @@ YEAR_RE = re.compile(r"^\d{4}$")
 
 
 def tight_height(n_rows: int) -> int:
-    header = 40
-    per_row = 36
-    padding = 12
+    header = 34
+    per_row = 26
+    padding = 10
     return header + per_row * max(n_rows, 1) + padding
 
 
@@ -646,7 +663,7 @@ def build_price_series(df_num: pd.DataFrame, year_cols: list[str], zone: str, co
 # 차트
 # =========================
 def plot_rank_line(years: list[int], ranks: list[int], title: str, style: dict):
-    fig, ax = plt.subplots(figsize=(7.0, 3.8), dpi=130)
+    fig, ax = plt.subplots(figsize=(7.0, RANK_FIG_HEIGHT_IN), dpi=RANK_FIG_DPI)
 
     ax.plot(
         years, ranks,
@@ -688,7 +705,7 @@ def plot_rank_line(years: list[int], ranks: list[int], title: str, style: dict):
 
 def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: list[float],
                        sel_label: str, cmp_label: str):
-    fig, ax = plt.subplots(figsize=(7.0, 3.8), dpi=130)
+    fig, ax = plt.subplots(figsize=(7.0, RANK_FIG_HEIGHT_IN), dpi=RANK_FIG_DPI)
 
     ax.plot(
         years, sel_prices,
@@ -989,7 +1006,7 @@ with l1:
         zone_table,
         use_container_width=True,
         hide_index=True,
-        height=tight_height(len(zone_table)),
+        height=RANK_PANEL_HEIGHT_PX,
         column_config={
             "연도": st.column_config.NumberColumn(format="%d", width="small"),
             "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
@@ -1018,7 +1035,7 @@ with l2:
         all_table,
         use_container_width=True,
         hide_index=True,
-        height=tight_height(len(all_table)),
+        height=RANK_PANEL_HEIGHT_PX,
         column_config={
             "연도": st.column_config.NumberColumn(format="%d", width="small"),
             "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
