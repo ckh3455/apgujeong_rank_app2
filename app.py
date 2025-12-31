@@ -328,9 +328,19 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
     df = df.replace({"": pd.NA, " ": pd.NA})
+
+    # '주소' 컬럼을 내부 표준인 '구역'으로 통일
+    if "구역" not in df.columns and "주소" in df.columns:
+        df = df.rename(columns={"주소": "구역"})
+
+    # 완전 빈 이름(_col*)으로 들어온 컬럼은 전부 NA인 경우에만 제거
+    drop_cols = [c for c in df.columns if str(c).startswith("_col")]
+    if drop_cols:
+        drop_cols = [c for c in drop_cols if df[c].isna().all()]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+
     return df
-
-
 def _detect_year_cols(df: pd.DataFrame) -> list[str]:
     year_cols = []
     for c in df.columns:
@@ -498,29 +508,29 @@ def load_from_gsheet(spreadsheet_id: str, gid: int = 0, worksheet_name: str | No
     if not values:
         raise ValueError("시트에 데이터가 없습니다.")
 
-    # 헤더(컬럼) 행 자동 탐지
-    # - 기존 스크립트는 '2행=헤더, 3행부터=데이터'를 전제로 했습니다.
-    # - 하지만 어떤 시트는 1~2행이 그룹/설명행(예: '30평형대')일 수 있어,
-    #   '구역' 컬럼이 포함된 첫 행을 헤더로 간주합니다.
+    # 헤더(컬럼) 행 자동 탐지: '구역' 또는 '주소'를 모두 지원
     header_row_index = None
+    must_have_sets = [
+        {"구역", "단지명", "동", "호"},
+        {"주소", "단지명", "동", "호"},  # 일부 시트에서 '구역' 대신 '주소' 사용
+    ]
+
     for i, row in enumerate(values[:50]):  # 상단 50행 내에서 탐색
-        norm = [str(x).strip().replace("\n", " ") for x in row]
-        if "구역" in norm:
+        cells = [str(x).strip() for x in row]
+        s = set(cells)
+        if any(ms.issubset(s) for ms in must_have_sets):
             header_row_index = i
             break
 
+    # 그래도 못 찾으면: 1행을 헤더로 간주(데이터 1행을 헤더로 오인하지 않도록 2행 fallback 금지)
     if header_row_index is None:
-        # fallback: 기존 동작(2행 헤더 가정)
-        if len(values) < 3:
-            raise ValueError("시트에 데이터가 충분하지 않습니다. (헤더 2행 + 데이터 필요)")
-        header_row_index = 1
+        header_row_index = 0
 
-    header = [str(x).strip() for x in values[header_row_index]]
+    header = [str(x).strip() if str(x).strip() else f"_col{j}" for j, x in enumerate(values[header_row_index])]
     data = values[header_row_index + 1:]
+
     df = pd.DataFrame(data, columns=header)
     return _normalize_columns(df)
-
-
 # =========================
 # 랭킹 계산
 # =========================
