@@ -82,6 +82,7 @@ def setup_korean_font():
 DEFAULT_MAIN_SHEET_ID = "1QGSM-mICX9KYa5Izym6sFKVaWwO-o0j86V-KmJ-w0IM"
 DEFAULT_LOG_SHEET_ID = "1-V5Ux8yto_8WE6epumN1aWT_D5t_1Dx14VWBZ0SvbbU"
 DEFAULT_MAIN_GID = 0
+DEFAULT_MAIN_WORKSHEET_NAME = "공동주택 공시가격"
 DEFAULT_LOG_GID = 0
 DEFAULT_MAX_DATA_ROWS = 10337
 
@@ -129,6 +130,7 @@ PROMO_TEXT_HTML = """
 # =========================
 MAIN_SPREADSHEET_ID = str(st.secrets.get("main_sheet_id", DEFAULT_MAIN_SHEET_ID)).strip()
 MAIN_GID = int(st.secrets.get("main_gid", DEFAULT_MAIN_GID))
+MAIN_WORKSHEET_NAME = str(st.secrets.get("main_worksheet_name", DEFAULT_MAIN_WORKSHEET_NAME)).strip()
 MAX_DATA_ROWS = int(st.secrets.get("max_data_rows", DEFAULT_MAX_DATA_ROWS))
 
 # 조회 로그 기록용 시트(선택)
@@ -478,10 +480,19 @@ def append_lookup_log(zone: str, dong: int, ho: int, complex_name: str, event: s
 # 구글시트 로딩 (헤더 2행)
 # =========================
 @st.cache_data(show_spinner=False, ttl=600)
-def load_from_gsheet(spreadsheet_id: str, gid: int = 0) -> pd.DataFrame:
+def load_from_gsheet(spreadsheet_id: str, gid: int = 0, worksheet_name: str | None = None) -> pd.DataFrame:
     gc = get_gspread_client()
     sh = gc.open_by_key(spreadsheet_id)
-    ws = open_worksheet_by_gid(sh, gid)
+
+    # 우선순위: worksheet_name(탭 이름) → gid
+    ws = None
+    if worksheet_name:
+        try:
+            ws = sh.worksheet(worksheet_name)
+        except Exception:
+            ws = None
+    if ws is None:
+        ws = open_worksheet_by_gid(sh, gid)
 
     values = ws.get_all_values()
     if not values:
@@ -747,7 +758,7 @@ st.markdown(APP_DESCRIPTION)
 st.markdown(PROMO_TEXT_HTML, unsafe_allow_html=True)
 
 try:
-    df_raw = load_from_gsheet(MAIN_SPREADSHEET_ID, MAIN_GID)
+    df_raw = load_from_gsheet(MAIN_SPREADSHEET_ID, MAIN_GID, MAIN_WORKSHEET_NAME)
 except Exception as e:
     st.error(f"구글시트 로딩 실패: {e}")
     st.stop()
@@ -789,6 +800,7 @@ zone = st.selectbox("구역 선택", zones, index=None, placeholder="구역을 �
 
 if zone is None:
     dong_pairs = []
+    _dong_is_unique = True
 else:
     zone_df0 = df_num[df_num["구역"] == zone].copy()
     dong_pairs = (
@@ -800,10 +812,15 @@ else:
         .tolist()
     )
 
+    # 같은 구역 내에서 '동' 값이 단지명과 1:1이면, 화면에는 '동'만 노출(요청사항: 구역/동/호)
+    # 만약 같은 '동'이 여러 단지에 존재하면 혼동 방지를 위해 단지명도 함께 표기합니다.
+    _dong_only_ok = (pd.Series([int(x[1]) for x in dong_pairs]).value_counts().max() == 1) if dong_pairs else True
+    _dong_is_unique = bool(_dong_only_ok)
+
 
 def fmt_dong(x):
     cn, d = x
-    return f"{cn} / {int(d)}동"
+    return f"{int(d)}동" if _dong_is_unique else f"{cn} / {int(d)}동"
 
 
 dong_pair = st.selectbox(
@@ -868,124 +885,183 @@ except Exception as e:
     st.stop()
 
 
-left, right = st.columns([1, 2], gap="large")
+# =========================
+# 선택 요약 (요청: 한 줄 요약)
+# =========================
+# 선택 행
+pick = df_num[
+    (df_num["구역"] == zone)
+    & (df_num["단지명"] == complex_name)
+    & (df_num["동"] == dong)
+    & (df_num["호"] == ho)
+]
+pick_row = pick.iloc[0] if not pick.empty else None
 
-with left:
-    st.subheader("구역 내 연도별 랭킹")
-    st.caption(f"선택: {zone} / {complex_name} / {dong}동 / {ho}호")
-    st.dataframe(
-        zone_table,
-        use_container_width=True,
-        hide_index=True,
-        height=tight_height(len(zone_table)),
-        column_config={
-            "연도": st.column_config.NumberColumn(format="%d", width="small"),
-            "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
-            "구역 내 랭킹": st.column_config.TextColumn(width="small"),
-        },
+def _find_first_col(df_: pd.DataFrame, candidates: list[str]) -> str | None:
+    cols = set(df_.columns)
+    for c in candidates:
+        if c in cols:
+            return c
+    return None
+
+area_col = _find_first_col(df_num, ["전용면적(㎡)", "전용면적", "전용면적  (㎡).", "전용면적 (㎡)", "전용면적㎡"])
+land_col = _find_first_col(df_num, ["대지지분(평)", "대지지분", "대지지분    (평)", "대지지분 (평)", "대지지분평"])
+
+def _fmt_num(v, fmt: str = "{:.2f}") -> str:
+    try:
+        if v is None or (isinstance(v, float) and pd.isna(v)) or pd.isna(v):
+            return "-"
+    except Exception:
+        pass
+    try:
+        return fmt.format(float(v))
+    except Exception:
+        return "-"
+
+# 2025 요약값
+_y = 2025
+price_2025 = zone_table.loc[zone_table["연도"] == _y, "공시가격(억)"]
+price_2025_v = price_2025.iloc[0] if len(price_2025) else pd.NA
+
+zone_rank_2025 = zone_table.loc[zone_table["연도"] == _y, "구역 내 랭킹"]
+zone_rank_2025_v = str(zone_rank_2025.iloc[0]) if len(zone_rank_2025) else "-"
+
+all_rank_2025 = all_table.loc[all_table["연도"] == _y, "압구정 전체 랭킹"]
+all_rank_2025_v = str(all_rank_2025.iloc[0]) if len(all_rank_2025) else "-"
+
+area_v = pd.to_numeric(pick_row[area_col], errors="coerce") if (pick_row is not None and area_col) else pd.NA
+land_v = pd.to_numeric(pick_row[land_col], errors="coerce") if (pick_row is not None and land_col) else pd.NA
+
+st.subheader("선택 요약")
+st.caption(f"선택: {zone} / {dong}동 / {ho}호")
+st.markdown(
+    f"**2025 공시가격** {_fmt_num(price_2025_v, '{:.2f}')}(억) / "
+    f"**구역내 순위** {zone_rank_2025_v} / "
+    f"**압구정 전체순위** {all_rank_2025_v} / "
+    f"**전용면적** {_fmt_num(area_v, '{:.2f}')} (㎡) / "
+    f"**대지지분** {_fmt_num(land_v, '{:.2f}')} (평)"
+)
+
+st.divider()
+
+# =========================
+# 랭킹 표
+# =========================
+st.subheader("연도별 랭킹 표")
+
+st.markdown("**구역 내 연도별 랭킹**")
+st.dataframe(
+    zone_table,
+    use_container_width=True,
+    hide_index=True,
+    height=tight_height(len(zone_table)),
+    column_config={
+        "연도": st.column_config.NumberColumn(format="%d", width="small"),
+        "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
+        "구역 내 랭킹": st.column_config.TextColumn(width="small"),
+    },
+)
+
+st.markdown("**압구정 전체 연도별 랭킹**")
+st.dataframe(
+    all_table,
+    use_container_width=True,
+    hide_index=True,
+    height=tight_height(len(all_table)),
+    column_config={
+        "연도": st.column_config.NumberColumn(format="%d", width="small"),
+        "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
+        "압구정 전체 랭킹": st.column_config.TextColumn(width="small"),
+    },
+)
+
+st.divider()
+
+# =========================
+# 그래프 (요청: 좌우 → 아래위 3단)
+# =========================
+st.subheader("순위 변화 그래프 (3단)")
+
+z_plot = zone_table.copy()
+z_plot["rank"] = z_plot["구역 내 랭킹"].apply(_parse_rank_text)
+z_plot = z_plot.dropna(subset=["rank"]).copy()
+z_plot["연도"] = z_plot["연도"].astype(int)
+z_plot["rank"] = z_plot["rank"].astype(int)
+z_plot = z_plot.sort_values("연도")
+
+a_plot = all_table.copy()
+a_plot["rank"] = a_plot["압구정 전체 랭킹"].apply(_parse_rank_text)
+a_plot = a_plot.dropna(subset=["rank"]).copy()
+a_plot["연도"] = a_plot["연도"].astype(int)
+a_plot["rank"] = a_plot["rank"].astype(int)
+a_plot = a_plot.sort_values("연도")
+
+st.markdown("**1) 구역 내 순위 변화(연도별)**")
+if z_plot.empty:
+    st.info("구역 내 순위 그래프를 그릴 데이터가 없습니다.")
+else:
+    fig1 = plot_rank_line(
+        years=z_plot["연도"].tolist(),
+        ranks=z_plot["rank"].tolist(),
+        title=f"{zone} / {dong}동 / {ho}호  (구역 내 순위)",
+        style=ZONE_RANK_STYLE,
     )
+    st.pyplot(fig1, use_container_width=True)
 
-    st.subheader("압구정 전체 연도별 랭킹")
-    st.dataframe(
-        all_table,
-        use_container_width=True,
-        hide_index=True,
-        height=tight_height(len(all_table)),
-        column_config={
-            "연도": st.column_config.NumberColumn(format="%d", width="small"),
-            "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
-            "압구정 전체 랭킹": st.column_config.TextColumn(width="small"),
-        },
+st.markdown("**2) 압구정 전체 순위 변화(연도별)**")
+if a_plot.empty:
+    st.info("압구정 전체 순위 그래프를 그릴 데이터가 없습니다.")
+else:
+    fig2 = plot_rank_line(
+        years=a_plot["연도"].tolist(),
+        ranks=a_plot["rank"].tolist(),
+        title=f"{zone} / {dong}동 / {ho}호  (압구정 전체 순위)",
+        style=ALL_RANK_STYLE,
     )
+    st.pyplot(fig2, use_container_width=True)
 
-with right:
-    st.subheader("순위 변화 그래프")
+st.markdown("**3) 2016년 유사 가격 타구역 비교(가격 추이)**")
 
-    z_plot = zone_table.copy()
-    z_plot["rank"] = z_plot["구역 내 랭킹"].apply(_parse_rank_text)
-    z_plot = z_plot.dropna(subset=["rank"]).copy()
-    z_plot["연도"] = z_plot["연도"].astype(int)
-    z_plot["rank"] = z_plot["rank"].astype(int)
-    z_plot = z_plot.sort_values("연도")
+cmp = find_closest_by_2016(
+    df_num=df_num,
+    base_zone=zone,
+    base_key=(zone, complex_name, dong, ho),
+    year2016="2016",
+)
 
-    a_plot = all_table.copy()
-    a_plot["rank"] = a_plot["압구정 전체 랭킹"].apply(_parse_rank_text)
-    a_plot = a_plot.dropna(subset=["rank"]).copy()
-    a_plot["연도"] = a_plot["연도"].astype(int)
-    a_plot["rank"] = a_plot["rank"].astype(int)
-    a_plot = a_plot.sort_values("연도")
+if cmp is None:
+    st.info("2016년 가격이 없거나, 비교할 타구역(2016 값 존재) 데이터가 없어 세 번째 그래프를 그릴 수 없습니다.")
+else:
+    cmp_zone = cmp["cmp_zone"]
+    cmp_complex = cmp["cmp_complex"]
+    cmp_dong = cmp["cmp_dong"]
+    cmp_ho = cmp["cmp_ho"]
 
-    top_l, top_r = st.columns(2, gap="medium")
+    sel_years, sel_prices = build_price_series(df_num, year_cols, zone, complex_name, dong, ho)
+    cmp_years, cmp_prices = build_price_series(df_num, year_cols, cmp_zone, cmp_complex, cmp_dong, cmp_ho)
 
-    with top_l:
-        st.markdown("**구역 내 순위 변화(연도별)**")
-        if z_plot.empty:
-            st.info("구역 내 순위 그래프를 그릴 데이터가 없습니다.")
-        else:
-            fig1 = plot_rank_line(
-                years=z_plot["연도"].tolist(),
-                ranks=z_plot["rank"].tolist(),
-                title=f"{zone} / {complex_name} / {dong}동 / {ho}호  (구역 내 순위)",
-                style=ZONE_RANK_STYLE,
-            )
-            st.pyplot(fig1, use_container_width=True)
+    sel_map = dict(zip(sel_years, sel_prices))
+    cmp_map = dict(zip(cmp_years, cmp_prices))
+    common_years = sorted(set(sel_map.keys()) & set(cmp_map.keys()))
 
-    with top_r:
-        st.markdown("**압구정 전체 순위 변화(연도별)**")
-        if a_plot.empty:
-            st.info("압구정 전체 순위 그래프를 그릴 데이터가 없습니다.")
-        else:
-            fig2 = plot_rank_line(
-                years=a_plot["연도"].tolist(),
-                ranks=a_plot["rank"].tolist(),
-                title=f"{zone} / {complex_name} / {dong}동 / {ho}호  (압구정 전체 순위)",
-                style=ALL_RANK_STYLE,
-            )
-            st.pyplot(fig2, use_container_width=True)
-
-    st.markdown("**2016년 유사 가격 타구역 비교(가격 추이)**")
-
-    cmp = find_closest_by_2016(
-        df_num=df_num,
-        base_zone=zone,
-        base_key=(zone, complex_name, dong, ho),
-        year2016="2016",
-    )
-
-    if cmp is None:
-        st.info("2016년 가격이 없거나, 비교할 타구역(2016 값 존재) 데이터가 없어 세 번째 그래프를 그릴 수 없습니다.")
+    if not common_years:
+        st.info("선택/비교 물건의 공통 연도 데이터가 없어 비교 그래프를 그릴 수 없습니다.")
     else:
-        cmp_zone = cmp["cmp_zone"]
-        cmp_complex = cmp["cmp_complex"]
-        cmp_dong = cmp["cmp_dong"]
-        cmp_ho = cmp["cmp_ho"]
+        sel_prices_aligned = [sel_map[y] for y in common_years]
+        cmp_prices_aligned = [cmp_map[y] for y in common_years]
 
-        sel_years, sel_prices = build_price_series(df_num, year_cols, zone, complex_name, dong, ho)
-        cmp_years, cmp_prices = build_price_series(df_num, year_cols, cmp_zone, cmp_complex, cmp_dong, cmp_ho)
+        st.caption(
+            f"선택(2016): {cmp['base_price']:.2f}억  |  "
+            f"유사타구역(2016): {cmp['cmp_price']:.2f}억  |  "
+            f"차이: {cmp['diff']:.2f}억"
+        )
+        st.caption(f"유사타구역 물건: {unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)}")
 
-        sel_map = dict(zip(sel_years, sel_prices))
-        cmp_map = dict(zip(cmp_years, cmp_prices))
-        common_years = sorted(set(sel_map.keys()) & set(cmp_map.keys()))
-
-        if not common_years:
-            st.info("선택/비교 물건의 공통 연도 데이터가 없어 비교 그래프를 그릴 수 없습니다.")
-        else:
-            sel_prices_aligned = [sel_map[y] for y in common_years]
-            cmp_prices_aligned = [cmp_map[y] for y in common_years]
-
-            st.caption(
-                f"선택(2016): {cmp['base_price']:.2f}억  |  "
-                f"유사타구역(2016): {cmp['cmp_price']:.2f}억  |  "
-                f"차이: {cmp['diff']:.2f}억"
-            )
-            st.caption(f"유사타구역 물건: {unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)}")
-
-            fig3 = plot_price_compare(
-                years=common_years,
-                sel_prices=sel_prices_aligned,
-                cmp_prices=cmp_prices_aligned,
-                sel_label=f"선택: {zone}",
-                cmp_label=f"유사타구역: {cmp_zone}",
-            )
-            st.pyplot(fig3, use_container_width=True)
-
+        fig3 = plot_price_compare(
+            years=common_years,
+            sel_prices=sel_prices_aligned,
+            cmp_prices=cmp_prices_aligned,
+            sel_label=f"선택: {zone}",
+            cmp_label=f"유사타구역: {cmp_zone}",
+        )
+        st.pyplot(fig3, use_container_width=True)
