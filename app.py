@@ -1140,7 +1140,15 @@ def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: li
     )
 
     ax.grid(True, alpha=0.3)
-    ax.legend(loc="best")
+    leg = ax.legend(loc="best")
+    # 범례/축/제목 등 모든 텍스트에 얇은 검정 엣지 적용
+    for _t in [ax.title, ax.xaxis.label, ax.yaxis.label]:
+        _t.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+    for _lab in (ax.get_xticklabels() + ax.get_yticklabels()):
+        _lab.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+    if leg is not None:
+        for _lt in leg.get_texts():
+            _lt.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
     fig.tight_layout()
     return fig
 
@@ -1894,6 +1902,42 @@ else:
                 pmin, pmax = min(prices), max(prices)
                 p_mid = (pmin + pmax) / 2.0
 
+                # 라벨 텍스트(처음/끝만) + 겹침 최소화를 위한 오프셋 + 텍스트 엣지(검정 0.3)
+                from matplotlib import patheffects as pe
+                
+                def _pt_text(year: str, price: float, rank: float) -> str:
+                    try:
+                        rank_i = int(round(float(rank)))
+                    except Exception:
+                        rank_i = int(rank) if rank is not None else 0
+                    return f"{year}\n{price:.2f}억\n{rank_i:,}위"
+                
+                def _annot_point(x: float, y: float, text: str, *, color: str, idx: int, is_start: bool):
+                    # 단지별로 오프셋 패턴을 달리하고, x 위치에 따라 바깥쪽으로 배치
+                    if is_start:
+                        dy_pattern = [12, -14, 16]
+                        dy = dy_pattern[idx % 3]
+                        dx = 14 if x <= p_mid else -14
+                    else:
+                        dy_pattern = [-12, 14, -16]
+                        dy = dy_pattern[idx % 3]
+                        dx = -14 if x <= p_mid else 14
+                
+                    dx += (idx - 1) * 2  # 단지별 미세 이동
+                    ha = "left" if dx > 0 else "right"
+                    ann = ax.annotate(
+                        text,
+                        xy=(x, y),
+                        xytext=(dx, dy),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color=color,
+                        ha=ha,
+                        va="center",
+                        zorder=6,
+                    )
+                    ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                
                 # 3개 단지 선그래프(연도 전체)
                 for i, (label, pts, color) in enumerate(unit_points):
                     if len(pts) < 2:
