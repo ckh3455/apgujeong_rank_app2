@@ -384,34 +384,45 @@ def render_rank_table_html(df_in: pd.DataFrame) -> None:
 @st.cache_resource(show_spinner=False)
 
 def render_compare_year_table_html(cmp: dict, last_year: str, sel_name: str, cmp_name: str) -> None:
-    """선택/비교 대상의 2016 vs 최신연도(보통 2025) 가격/순위를 한눈에 보는 표로 표시."""
-    y0 = int(cmp.get('year2016', 2016))
+    """선택/비교 대상의 2016 vs 최신연도(보통 2025) 가격/순위를 한눈에 보는 표로 표시.
+
+    - 표 컬럼명을 '선택/비교' 같은 일반명 대신, 실제 물건명(구역/단지/동/층)으로 표시합니다.
+    """
+    y0 = int(cmp.get("year2016", 2016))
     y1 = int(last_year)
+
+    sel_price_col = f"{sel_name} 가격(억)"
+    sel_rank_col = f"{sel_name} 순위"
+    cmp_price_col = f"{cmp_name} 가격(억)"
+    cmp_rank_col = f"{cmp_name} 순위"
 
     df = pd.DataFrame(
         {
-            "선택 가격(억)": [cmp["base_price_2016"], cmp["base_price_last"]],
-            "선택 순위": [cmp["base_rank_2016"], cmp["base_rank_last"]],
-            "비교 가격(억)": [cmp["cmp_price_2016"], cmp["cmp_price_last"]],
-            "비교 순위": [cmp["cmp_rank_2016"], cmp["cmp_rank_last"]],
+            sel_price_col: [cmp["base_price_2016"], cmp["base_price_last"]],
+            sel_rank_col: [cmp["base_rank_2016"], cmp["base_rank_last"]],
+            cmp_price_col: [cmp["cmp_price_2016"], cmp["cmp_price_last"]],
+            cmp_rank_col: [cmp["cmp_rank_2016"], cmp["cmp_rank_last"]],
         },
         index=[y0, y1],
     )
     df.index.name = "연도"
 
     disp = df.copy()
-    for c in ["선택 가격(억)", "비교 가격(억)"]:
+    for c in [sel_price_col, cmp_price_col]:
         disp[c] = disp[c].map(lambda x: f"{float(x):.2f}")
-    for c in ["선택 순위", "비교 순위"]:
+    for c in [sel_rank_col, cmp_rank_col]:
         disp[c] = disp[c].map(lambda x: f"{int(x):,}")
 
+    # 상단에 한 줄 요약(선택/비교 물건명)
     st.markdown(
         f"<div style='text-align:center; font-weight:700; margin:4px 0 10px 0;'>"
         f"선택: {sel_name} &nbsp;&nbsp;|&nbsp;&nbsp; 비교: {cmp_name}</div>",
         unsafe_allow_html=True,
     )
+
     html = disp.to_html(classes="summary-table", escape=False)
     st.markdown(html, unsafe_allow_html=True)
+
 def get_gspread_client():
     import gspread
     from google.oauth2.service_account import Credentials
@@ -1143,10 +1154,51 @@ def plot_price_rank_arrow(
         arrowprops=dict(arrowstyle='->', lw=2.2, color=CMP_BAR_STYLE['edge_color']),
     )
 
-    ax.text(base_p0, base_r0, ' 2016', va='center', fontsize=10, fontweight='bold')
-    ax.text(base_p1, base_r1, f' {last_year}', va='center', fontsize=10, fontweight='bold')
-    ax.text(cmp_p0, cmp_r0, ' 2016', va='center', fontsize=10, fontweight='bold')
-    ax.text(cmp_p1, cmp_r1, f' {last_year}', va='center', fontsize=10, fontweight='bold')
+    def _pt_label(year: str, price: float, rank: float) -> str:
+        return f"{year}\n{price:.2f}억\n{int(rank):,}위"
+
+    # 각 점에 '연도 / 가격 / 순위'를 표시 (요청: 2016 7.99억 9,113위 형태)
+    ax.annotate(
+        _pt_label("2016", base_p0, base_r0),
+        xy=(base_p0, base_r0),
+        xytext=(10, -10),
+        textcoords="offset points",
+        fontsize=10,
+        fontweight="bold",
+        color=SEL_BAR_STYLE["edge_color"],
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.75),
+    )
+    ax.annotate(
+        _pt_label(str(last_year), base_p1, base_r1),
+        xy=(base_p1, base_r1),
+        xytext=(10, -10),
+        textcoords="offset points",
+        fontsize=10,
+        fontweight="bold",
+        color=SEL_BAR_STYLE["edge_color"],
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.75),
+    )
+
+    ax.annotate(
+        _pt_label("2016", cmp_p0, cmp_r0),
+        xy=(cmp_p0, cmp_r0),
+        xytext=(10, 12),
+        textcoords="offset points",
+        fontsize=10,
+        fontweight="bold",
+        color=CMP_BAR_STYLE["edge_color"],
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.75),
+    )
+    ax.annotate(
+        _pt_label(str(last_year), cmp_p1, cmp_r1),
+        xy=(cmp_p1, cmp_r1),
+        xytext=(10, 12),
+        textcoords="offset points",
+        fontsize=10,
+        fontweight="bold",
+        color=CMP_BAR_STYLE["edge_color"],
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.75),
+    )
 
     ax.set_title(f"가격-순위 이동(2016→{last_year})")
     ax.set_xlabel("공시가격(억)")
