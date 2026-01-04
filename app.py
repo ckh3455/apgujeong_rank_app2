@@ -1170,7 +1170,7 @@ def plot_price_compare_bars(
     width = 0.40
 
     b1 = ax.bar(
-        x - width / 2,
+        x - width / 1,
         sel_prices,
         width,
         label=sel_label,
@@ -1182,7 +1182,7 @@ def plot_price_compare_bars(
         zorder=3,
     )
     b2 = ax.bar(
-        x + width / 2,
+        x + width / 1,
         cmp_prices,
         width,
         label=cmp_label,
@@ -1300,7 +1300,7 @@ def plot_price_rank_arrow(
     # 점/화살표(선택)
     ax.scatter(
         [base_p0, base_p1], [base_r0, base_r1],
-        s=110, marker='o',
+        s=110, marker='s',
         c=SEL_BAR_STYLE['face_color'],
         edgecolors=SEL_BAR_STYLE['edge_color'],
         linewidths=SEL_BAR_STYLE['linewidth'],
@@ -1339,7 +1339,7 @@ def plot_price_rank_arrow(
         fontweight="normal",
         color=SEL_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=4,
+        zorder=3,
     )
     ax.annotate(
         _pt_label(str(last_year), base_p1, base_r1),
@@ -1350,7 +1350,7 @@ def plot_price_rank_arrow(
         fontweight="normal",
         color=SEL_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=4,
+        zorder=3,
     )
     ax.annotate(
         _pt_label("2016", cmp_p0, cmp_r0),
@@ -1361,7 +1361,7 @@ def plot_price_rank_arrow(
         fontweight="normal",
         color=CMP_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=4,
+        zorder=3,
     )
     ax.annotate(
         _pt_label(str(last_year), cmp_p1, cmp_r1),
@@ -1372,7 +1372,7 @@ def plot_price_rank_arrow(
         fontweight="normal",
         color=CMP_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=4,
+        zorder=3,
     )
 
     ax.set_title(f"가격-순위 이동(2016→{last_year})")
@@ -1966,8 +1966,8 @@ else:
                     # - 같은 연도에서 '순위가 가장 낮은(숫자 가장 큰)' 1개는 포인트 아래
                     # - 나머지 2개는 포인트 위로, 서로 다른 높이/좌우로 분산
                     dy_up = [10, 20]
-                    dx_up = [-8, 8]
-                    dy_down = -14
+                    dx_up = [-4, 4]
+                    dy_down = -8
                     dx_down = 0
 
                     for i, (label, yrs, rs, color) in enumerate(unit_series):
