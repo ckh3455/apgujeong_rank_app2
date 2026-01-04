@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 from matplotlib import font_manager
 
 def setup_korean_font():
@@ -1860,64 +1861,54 @@ else:
                 cmp1_leg = f"비교단지 1: {legend_unit_label(rep1['zone'], rep1['pyeong_raw'], rep1['dong'], rep1['ho'])}"
                 cmp2_leg = f"비교단지 2: {legend_unit_label(rep2['zone'], rep2['pyeong_raw'], rep2['dong'], rep2['ho'])}"
 
-                series = [
-                    (base_leg, float(base_rep["price_2016"]), float(base_rep["rank_2016"]), float(base_rep["price_last"]), float(base_rep["rank_last"]), COLORS[0]),
-                    (cmp1_leg, float(rep1["price_2016"]), float(rep1["rank_2016"]), float(rep1["price_last"]), float(rep1["rank_last"]), COLORS[1]),
-                    (cmp2_leg, float(rep2["price_2016"]), float(rep2["rank_2016"]), float(rep2["price_last"]), float(rep2["rank_last"]), COLORS[2]),
+                # 연도 정렬(전체 연도 표시)
+                year_cols_sorted = sorted(year_cols, key=lambda s: int(s))
+                start_year = str(year_cols_sorted[0])
+                end_year = str(year_cols_sorted[-1])
+
+                # 연도별 전체 순위(공시가격 내림차순)
+                ranks_by_year = {y: df_num[y].rank(method="min", ascending=False) for y in year_cols_sorted}
+
+                units = [
+                    (base_leg, int(base_rep["idx"]), COLORS[0]),
+                    (cmp1_leg, int(rep1["idx"]), COLORS[1]),
+                    (cmp2_leg, int(rep2["idx"]), COLORS[2]),
                 ]
 
-                prices = [p for _, p0, _, p1, _, _ in series for p in (p0, p1)]
-                ranks  = [r for _, _, r0, _, r1, _ in series for r in (r0, r1)]
+                unit_points = []  # (label, [(year, price, rank), ...], color)
+                prices = []
+                ranks = []
+
+                for label, ridx, color in units:
+                    pts = []
+                    for y in year_cols_sorted:
+                        pval = pd.to_numeric(df_num.at[ridx, y], errors="coerce")
+                        rval = ranks_by_year[y].at[ridx]
+                        if pd.notna(pval) and pd.notna(rval):
+                            pts.append((str(y), float(pval), float(rval)))
+                            prices.append(float(pval))
+                            ranks.append(float(rval))
+                    unit_points.append((label, pts, color))
+
+                # 라벨 배치 기준(좌/우 판단용)
                 pmin, pmax = min(prices), max(prices)
                 p_mid = (pmin + pmax) / 2.0
 
-                def _pt_text(year: str, price: float, rank: float) -> str:
-                    return f"{year}\n{price:.2f}억\n{int(rank):,}위"
+                # 3개 단지 선그래프(연도 전체)
+                for i, (label, pts, color) in enumerate(unit_points):
+                    if len(pts) < 2:
+                        continue
+                    xs = [p for _, p, _ in pts]
+                    ys = [r for _, _, r in pts]
+                    ax.plot(xs, ys, marker="o", linewidth=2.6, color=color, label=label, zorder=3)
 
-                def _annot_point(x: float, y: float, txt: str, color: str, idx: int, is_start: bool):
-                    # x 위치에 따라 좌/우로 분기(그래프 밖으로 잘리는 것 방지)
-                    place_right = (x <= p_mid)
-                    xoff = (12 + idx * 3) if place_right else -(12 + idx * 3)
-                    ha = "left" if place_right else "right"
+                    # 텍스트는 처음/끝만
+                    y0, p0, r0 = pts[0]
+                    y1, p1, r1 = pts[-1]
+                    _annot_point(p0, r0, _pt_text(y0, p0, r0), color=color, idx=i, is_start=True)
+                    _annot_point(p1, r1, _pt_text(y1, p1, r1), color=color, idx=i, is_start=False)
 
-                    # 단지별로 수직 오프셋을 다르게 줘서 겹침 최소화
-                    if is_start:
-                        v_list = [18, -14, -46]   # 기준/비교1/비교2
-                    else:
-                        v_list = [-46, 18, -14]   # 도달점은 다른 패턴
-                    yoff = v_list[idx] if idx < len(v_list) else 18
-
-                    ax.annotate(
-                        txt,
-                        xy=(x, y),
-                        xytext=(xoff, yoff),
-                        textcoords="offset points",
-                        ha=ha,
-                        va="center",
-                        fontsize=9.5,
-                        fontweight="bold",
-                        color=color,
-                        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=color, alpha=0.82),
-                        zorder=5,
-                    )
-
-                # 3개 단지 라인/마커/화살표 + 시작/도달 라벨
-                for i, (label, p0, r0, p1, r1, color) in enumerate(series):
-                    # 라인 + 마커(라인색=마커색)
-                    ax.plot([p0, p1], [r0, r1], marker="o", linewidth=2.6, color=color, label=label, zorder=3)
-                    # 화살표(선색=마커색)
-                    ax.annotate(
-                        "",
-                        xy=(p1, r1),
-                        xytext=(p0, r0),
-                        arrowprops=dict(arrowstyle="->", lw=2.6, color=color),
-                        zorder=2,
-                    )
-                    # 시작/도달점 값 표시(금액/순위)
-                    _annot_point(p0, r0, _pt_text("2016", p0, r0), color=color, idx=i, is_start=True)
-                    _annot_point(p1, r1, _pt_text(str(last_year), p1, r1), color=color, idx=i, is_start=False)
-
-                ax.set_title(f"2016 → {last_year} 공시가격/순위 이동 (3개 단지)")
+                ax.set_title(f"{start_year} → {end_year} 공시가격/순위 이동 (3개 단지, 연도 전체)")
                 ax.set_xlabel("공시가격(억)")
                 ax.set_ylabel("순위(작을수록 상위)")
 
