@@ -1998,14 +1998,14 @@ else:
                                     title=dict(text=f"{start_year} → {end_year} 연도별 압구정 전체 순위 경쟁 (3개 단지)<br>(Play 버튼 또는 하단 슬라이더로 연도별 확인)", x=0.0, xanchor="left", y=0.98, yanchor="top"),
                                     xaxis=dict(title="상위 점수(높을수록 상위)", range=[0, max(df_long["score"].max(), 1.0) * 1.12], tickfont=dict(size=12), titlefont=dict(size=13)),
                                     yaxis=dict(title="", automargin=True, categoryorder="array", categoryarray=cat_order, tickfont=dict(size=15, family="Arial Black")),
-                                    margin=dict(l=190, r=90, t=155, b=145),
+                                    margin=dict(l=190, r=90, t=200, b=145),
                                     height=560,
                                     font=dict(size=12, family="Malgun Gothic"),
                                     updatemenus=[
                                         dict(
                                             type="buttons",
                                             direction="left",
-                                            x=0.01, y=1.01, xanchor="left", yanchor="top",
+                                            x=0.01, y=1.14, xanchor="left", yanchor="bottom",
                                             buttons=[
                                                 dict(
                                                     label="Play",
