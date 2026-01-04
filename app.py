@@ -1819,45 +1819,51 @@ else:
                 st.warning("비교단지 2에 2016/최신연도 데이터가 부족합니다.")
             else:
                 # --- 요약 표는 기존 렌더 함수 재사용(탭으로 분리) ---
-                tab1, tab2 = st.tabs([f"기준단지 vs 비교단지 1", f"기준단지 vs 비교단지 2"])
+                
+                # --- 요약 표: 3개 단지를 한 번에 표시(탭 제거) ---
+                def _compact_colname(u: dict) -> str:
+                    # 예: "현대1,2차 54평"
+                    return f"{u['complex']} {u['pyeong_fmt']}".strip()
 
-                def _render_table(base_u: dict, cmp_u: dict):
-                    cmp_payload = {
-                        "year2016": "2016",
-                        "last_year": last_year,
-                        "base_price_2016": float(base_u["price_2016"]),
-                        "base_rank_2016": int(base_u["rank_2016"]),
-                        "base_price_last": float(base_u["price_last"]),
-                        "base_rank_last": int(base_u["rank_last"]),
-                        "cmp_zone": cmp_u["zone"],
-                        "cmp_complex": cmp_u["complex"],
-                        "cmp_dong": int(cmp_u["dong"]),
-                        "cmp_ho": int(cmp_u["ho"]),
-                        "cmp_price_2016": float(cmp_u["price_2016"]),
-                        "cmp_rank_2016": int(cmp_u["rank_2016"]),
-                        "cmp_price_last": float(cmp_u["price_last"]),
-                        "cmp_rank_last": int(cmp_u["rank_last"]),
-                        "diff_price_2016": abs(float(cmp_u["price_2016"]) - float(base_u["price_2016"])),
-                        "relative_rank_swing": abs(
-                            (int(base_u["rank_last"]) - int(cmp_u["rank_last"]))
-                            - (int(base_u["rank_2016"]) - int(cmp_u["rank_2016"]))
-                        ),
-                    }
+                y0 = 2016
+                y1 = int(last_year)
 
-                    sel_name = unit_str_pyeong_floor_only(
-                        base_u["zone"], base_u["complex"], base_u["pyeong_raw"], base_u["dong"], base_u["ho"]
-                    )
-                    cmp_name = unit_str_pyeong_floor_only(
-                        cmp_u["zone"], cmp_u["complex"], cmp_u["pyeong_raw"], cmp_u["dong"], cmp_u["ho"]
-                    )
-                    render_compare_year_table_html(cmp_payload, last_year, sel_name=sel_name, cmp_name=cmp_name)
+                base_nm = _compact_colname(base_rep)
+                c1_nm = _compact_colname(rep1)
+                c2_nm = _compact_colname(rep2)
 
-                with tab1:
-                    _render_table(base_rep, rep1)
-                with tab2:
-                    _render_table(base_rep, rep2)
+                # 상단 요약(짧은 표기)
+                st.markdown(
+                    f"<div style='text-align:center; font-weight:700; margin:4px 0 10px 0;'>"
+                    f"기준: {base_nm} &nbsp;&nbsp;|&nbsp;&nbsp; 비교1: {c1_nm} &nbsp;&nbsp;|&nbsp;&nbsp; 비교2: {c2_nm}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
-                # --- 3개 단지를 하나의 화살표 그래프로 표현 ---
+                df_tbl = pd.DataFrame(
+                    {
+                        f"{base_nm} 가격(억)": [float(base_rep["price_2016"]), float(base_rep["price_last"])],
+                        f"{base_nm} 순위": [int(base_rep["rank_2016"]), int(base_rep["rank_last"])],
+                        f"{c1_nm} 가격(억)": [float(rep1["price_2016"]), float(rep1["price_last"])],
+                        f"{c1_nm} 순위": [int(rep1["rank_2016"]), int(rep1["rank_last"])],
+                        f"{c2_nm} 가격(억)": [float(rep2["price_2016"]), float(rep2["price_last"])],
+                        f"{c2_nm} 순위": [int(rep2["rank_2016"]), int(rep2["rank_last"])],
+                    },
+                    index=[y0, y1],
+                )
+                df_tbl.index.name = "연도"
+
+                disp = df_tbl.copy()
+                for c in disp.columns:
+                    if "가격" in c:
+                        disp[c] = disp[c].map(lambda x: f"{float(x):.2f}")
+                    else:
+                        disp[c] = disp[c].map(lambda x: f"{int(x):,}")
+
+                html = disp.to_html(classes="summary-table", escape=False)
+                st.markdown(html, unsafe_allow_html=True)
+
+# --- 3개 단지를 하나의 화살표 그래프로 표현 ---
                 import matplotlib.pyplot as plt
 
                 # 요청 색상(기준/비교1/비교2)
