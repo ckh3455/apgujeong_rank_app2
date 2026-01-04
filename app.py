@@ -1883,91 +1883,102 @@ else:
                     (cmp2_leg, int(rep2["idx"]), COLORS[2]),
                 ]
 
-                unit_points = []  # (label, [(year, price, rank), ...], color)
-                prices = []
-                ranks = []
+                # 3개 단지 선그래프(연도 전체): x=연도, y=공시가격(억)
+                unit_series = []  # (label, years[int], prices[float], color)
+                all_years = []
+                all_prices = []
 
                 for label, ridx, color in units:
-                    pts = []
+                    yrs = []
+                    ps = []
                     for y in year_cols_sorted:
                         pval = pd.to_numeric(df_num.at[ridx, y], errors="coerce")
-                        rval = ranks_by_year[y].at[ridx]
-                        if pd.notna(pval) and pd.notna(rval):
-                            pts.append((str(y), float(pval), float(rval)))
-                            prices.append(float(pval))
-                            ranks.append(float(rval))
-                    unit_points.append((label, pts, color))
+                        if pd.notna(pval):
+                            yy = int(y)
+                            yrs.append(yy)
+                            ps.append(float(pval))
+                            all_years.append(yy)
+                            all_prices.append(float(pval))
+                    unit_series.append((label, yrs, ps, color))
 
-                # 라벨 배치 기준(좌/우 판단용)
-                pmin, pmax = min(prices), max(prices)
-                p_mid = (pmin + pmax) / 2.0
+                if not all_years or not all_prices:
+                    st.warning("선택된 단지들에서 연도별 공시가격 데이터를 찾지 못했습니다.")
+                else:
+                    x_min, x_max = min(all_years), max(all_years)
+                    x_mid = (x_min + x_max) / 2.0
 
-                # 라벨 텍스트(처음/끝만) + 겹침 최소화를 위한 오프셋 + 텍스트 엣지(검정 0.3)
-                from matplotlib import patheffects as pe
-                
-                def _pt_text(year: str, price: float, rank: float) -> str:
-                    try:
-                        rank_i = int(round(float(rank)))
-                    except Exception:
-                        rank_i = int(rank) if rank is not None else 0
-                    return f"{year}\n{price:.2f}억\n{rank_i:,}위"
-                
-                def _annot_point(x: float, y: float, text: str, *, color: str, idx: int, is_start: bool):
-                    # 단지별로 오프셋 패턴을 달리하고, x 위치에 따라 바깥쪽으로 배치
-                    if is_start:
-                        dy_pattern = [12, -14, 16]
-                        dy = dy_pattern[idx % 3]
-                        dx = 14 if x <= p_mid else -14
-                    else:
-                        dy_pattern = [-12, 14, -16]
-                        dy = dy_pattern[idx % 3]
-                        dx = -14 if x <= p_mid else 14
-                
-                    dx += (idx - 1) * 2  # 단지별 미세 이동
-                    ha = "left" if dx > 0 else "right"
-                    ann = ax.annotate(
-                        text,
-                        xy=(x, y),
-                        xytext=(dx, dy),
-                        textcoords="offset points",
-                        fontsize=9,
-                        color=color,
-                        ha=ha,
-                        va="center",
-                        zorder=6,
-                    )
-                    ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
-                
-                # 3개 단지 선그래프(연도 전체)
-                for i, (label, pts, color) in enumerate(unit_points):
-                    if len(pts) < 2:
-                        continue
-                    xs = [p for _, p, _ in pts]
-                    ys = [r for _, _, r in pts]
-                    ax.plot(xs, ys, marker="o", linewidth=2.6, color=color, label=label, zorder=3)
+                    from matplotlib import patheffects as pe
 
-                    # 텍스트는 처음/끝만
-                    y0, p0, r0 = pts[0]
-                    y1, p1, r1 = pts[-1]
-                    _annot_point(p0, r0, _pt_text(y0, p0, r0), color=color, idx=i, is_start=True)
-                    _annot_point(p1, r1, _pt_text(y1, p1, r1), color=color, idx=i, is_start=False)
+                    def _pt_text(year: int, price: float) -> str:
+                        return f"{year}\n{price:.2f}억"
 
-                ax.set_title(f"{start_year} → {end_year} 공시가격/순위 이동 (3개 단지, 연도 전체)")
-                ax.set_xlabel("공시가격(억)")
-                ax.set_ylabel("순위(작을수록 상위)")
+                    def _annot_point(x: int, y: float, text: str, *, color: str, idx: int, is_start: bool):
+                        # 단지별 오프셋 패턴 + 좌/우 바깥쪽 배치
+                        if is_start:
+                            dy_pattern = [10, -12, 14]
+                            dy = dy_pattern[idx % 3]
+                            dx = -14 if x <= x_mid else 14
+                        else:
+                            dy_pattern = [-10, 12, -14]
+                            dy = dy_pattern[idx % 3]
+                            dx = 14 if x <= x_mid else -14
 
-                # x/y 범위 패딩
-                prange = (pmax - pmin) if (pmax - pmin) != 0 else max(abs(pmax), 1.0)
-                ax.set_xlim(pmin - prange * 0.06, pmax + prange * 0.06)
+                        dx += (idx - 1) * 2
+                        ha = "left" if dx > 0 else "right"
 
-                rmin, rmax = min(ranks), max(ranks)
-                rpad = max((rmax - rmin) * 0.06, 1.0)
-                ax.set_ylim(rmax + rpad, rmin - rpad)  # 순위 축 반전
+                        ann = ax.annotate(
+                            text,
+                            xy=(x, y),
+                            xytext=(dx, dy),
+                            textcoords="offset points",
+                            fontsize=9,
+                            color=color,
+                            ha=ha,
+                            va="center",
+                            zorder=6,
+                        )
+                        ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
 
-                ax.grid(True, alpha=0.25)
-                ax.legend(loc="best")
-                fig.tight_layout()
-                st.pyplot(fig, use_container_width=True)
+                    # 선 + 마커(색상 고정)
+                    for i, (label, yrs, ps, color) in enumerate(unit_series):
+                        if len(yrs) < 2:
+                            continue
+                        ax.plot(yrs, ps, marker="o", linewidth=2.6, color=color, label=label, zorder=3)
+
+                        # 텍스트는 처음/끝만
+                        _annot_point(yrs[0], ps[0], _pt_text(yrs[0], ps[0]), color=color, idx=i, is_start=True)
+                        _annot_point(yrs[-1], ps[-1], _pt_text(yrs[-1], ps[-1]), color=color, idx=i, is_start=False)
+
+                    ax.set_title(f"{start_year} → {end_year} 연도별 공시가격 추이 (3개 단지)")
+                    ax.set_xlabel("연도")
+                    ax.set_ylabel("공시가격(억)")
+
+                    # x축: 연도 고정 표시
+                    x_ticks = sorted(set(all_years))
+                    ax.set_xticks(x_ticks)
+
+                    # y축 패딩
+                    y_min, y_max = min(all_prices), max(all_prices)
+                    y_range = (y_max - y_min) if (y_max - y_min) != 0 else max(abs(y_max), 1.0)
+                    ax.set_ylim(y_min - y_range * 0.08, y_max + y_range * 0.08)
+
+                    ax.grid(True, alpha=0.25)
+
+                    # 그래프 내 텍스트(제목/축/틱/범례) 엣지 적용
+                    ax.title.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                    ax.xaxis.label.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                    ax.yaxis.label.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+
+                    for _lab in (ax.get_xticklabels() + ax.get_yticklabels()):
+                        _lab.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+
+                    leg = ax.legend(loc="best")
+                    if leg is not None:
+                        for _lt in leg.get_texts():
+                            _lt.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+
+                    fig.tight_layout()
+                    st.pyplot(fig, use_container_width=True)
         else:
             if not can_compare:
                 st.caption("기준단지/비교단지 1/2의 구역·단지·평형을 모두 선택하면 [비교하기] 버튼이 활성화됩니다.")
