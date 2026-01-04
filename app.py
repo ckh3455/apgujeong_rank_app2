@@ -345,6 +345,23 @@ st.markdown(
         white-space: nowrap;
       }
       
+
+      /* ===== Compare buttons sky-blue (secondary) ===== */
+      button[data-testid="baseButton-secondary"] {
+        background-color: #87CEEB !important;
+        color: #08324a !important;
+        border: 1px solid #5bb9d5 !important;
+      }
+      button[data-testid="baseButton-secondary"]:hover {
+        background-color: #74c7e6 !important;
+        border-color: #4fb3d4 !important;
+        color: #08324a !important;
+      }
+      button[data-testid="baseButton-secondary"]:disabled {
+        background-color: rgba(135,206,235,0.55) !important;
+        color: rgba(8,50,74,0.65) !important;
+        border-color: rgba(91,185,213,0.45) !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -570,6 +587,32 @@ def unit_str_floor_only(zone: str, complex_name: str, dong: int, ho: int) -> str
     return f"{zone} / {complex_name} / {dong}동 / {floor_txt}"
 
 
+
+def _fmt_pyeong(pyeong_val) -> str:
+    """평형 표시를 일관되게 '56평' 형태로 만듭니다."""
+    if pyeong_val is None or (isinstance(pyeong_val, float) and pd.isna(pyeong_val)) or pd.isna(pyeong_val):
+        return "-"
+    s = str(pyeong_val).strip()
+    if not s:
+        return "-"
+    # 이미 '평' 포함이면 그대로
+    if "평" in s:
+        return s
+    # 숫자면 정수에 가깝게
+    try:
+        f = float(s)
+        if abs(f - round(f)) < 1e-6:
+            return f"{int(round(f))}평"
+        return f"{f:.1f}평"
+    except Exception:
+        return f"{s}평"
+
+
+def unit_str_pyeong_floor_only(zone: str, complex_name: str, pyeong_val, dong: int, ho: int) -> str:
+    floor = infer_floor_from_ho(ho)
+    floor_txt = f"{floor}층" if floor is not None else "층?"
+    pyeong_txt = _fmt_pyeong(pyeong_val)
+    return f"{zone} / {complex_name} / {pyeong_txt} / {dong}동 / {floor_txt}"
 def infer_device_type() -> str:
     ua = ""
     try:
@@ -804,6 +847,12 @@ def find_candidates_by_2016_with_rank_inversion(
         return pd.DataFrame()
 
     all_df = df_num.copy()
+    # 평형 컬럼 탐색(있으면 후보 리스트 표시에 활용)
+    pyeong_col = None
+    for _c in ["평형", "평형(평)", "평", "평형_평", "평형평"]:
+        if _c in all_df.columns:
+            pyeong_col = _c
+            break
     r2016 = all_df[year2016].rank(method="min", ascending=False)
     rlast = all_df[last_year].rank(method="min", ascending=False)
 
@@ -846,6 +895,7 @@ def find_candidates_by_2016_with_rank_inversion(
             "cmp_complex": cand["단지명"].astype(str),
             "cmp_dong": cand["동"].astype(int),
             "cmp_ho": cand["호"].astype(int),
+            "cmp_pyeong": (cand[pyeong_col] if pyeong_col is not None else pd.NA),
             "cmp_price_2016": cand["p2016"].astype(float),
             "cmp_rank_2016": cand["r2016"].astype(float),
             "cmp_price_last": cand["plast"].astype(float),
@@ -1534,7 +1584,28 @@ cand_all = find_candidates_by_2016_with_rank_inversion(
 if cand_all.empty:
     st.info("조건(2016 유사 + 순위 역전)을 만족하는 타구역 후보를 찾지 못했습니다. (또는 2016/최신연도 데이터가 부족합니다.)")
 else:
-    cand5 = cand_all.sort_values(["diff_price_2016", "relative_rank_swing"], ascending=[True, False]).head(5).reset_index(drop=True)
+    cand_sorted = cand_all.sort_values(["diff_price_2016", "relative_rank_swing"], ascending=[True, False]).reset_index(drop=True)
+
+    # (요청) 구역당 1개만 노출 + 완전 동일 키 중복 제거
+    picked_idx: list[int] = []
+    used_zones: set[str] = set()
+    used_keys: set[str] = set()
+    for _idx, _r in enumerate(cand_sorted.itertuples(index=False)):
+        _key = f"{_r.cmp_zone}|{_r.cmp_complex}|{int(_r.cmp_dong)}|{int(_r.cmp_ho)}"
+        _z = str(_r.cmp_zone)
+        if _key in used_keys:
+            continue
+        if _z in used_zones:
+            continue
+        used_keys.add(_key)
+        used_zones.add(_z)
+        picked_idx.append(_idx)
+        if len(picked_idx) >= 5:
+            break
+
+    cand5 = cand_sorted.iloc[picked_idx].reset_index(drop=True) if picked_idx else cand_sorted.head(1).reset_index(drop=True)
+    if len(cand5) < 5:
+        st.info(f"구역당 1개만 표시하도록 설정되어 후보 {len(cand5)}개만 표시됩니다.")
 
     # 후보 키 목록
     cand5_keys = [
@@ -1554,18 +1625,21 @@ else:
         left, right = st.columns([0.82, 0.18])
 
         with left:
-            unit = unit_str_floor_only(r.cmp_zone, r.cmp_complex, int(r.cmp_dong), int(r.cmp_ho))
+            pyeong_val = getattr(r, "cmp_pyeong", pd.NA)
+            if pyeong_val is not None and not pd.isna(pyeong_val):
+                unit = unit_str_pyeong_floor_only(r.cmp_zone, r.cmp_complex, pyeong_val, int(r.cmp_dong), int(r.cmp_ho))
+            else:
+                unit = unit_str_floor_only(r.cmp_zone, r.cmp_complex, int(r.cmp_dong), int(r.cmp_ho))
             st.markdown(
                 f"**{i}. {unit}**  \n"
                 f"- 2016 가격차: **{float(r.diff_price_2016):.2f}억** | 상대 순위차 변화량: **{float(r.relative_rank_swing):.0f}**  \n"
                 f"- 2016(가격/순위): {float(r.cmp_price_2016):.2f}억 / {int(r.cmp_rank_2016):,}위 → "
                 f"{last_year}(가격/순위): {float(r.cmp_price_last):.2f}억 / {int(r.cmp_rank_last):,}위"
             )
-
         with right:
             is_current = (st.session_state.get("cmp_pick_key") == row_key)
             btn_label = "선택됨" if is_current else "비교"
-            if st.button(btn_label, key=f"cmp_btn_{i}_{row_key}"):
+            if st.button(btn_label, key=f"cmp_btn_{i}_{row_key}", type="secondary", disabled=is_current):
                 st.session_state["cmp_pick_key"] = row_key
 
     # 선택된 후보로 비교 출력
