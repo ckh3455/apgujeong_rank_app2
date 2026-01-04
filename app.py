@@ -996,7 +996,7 @@ a_plot["연도"] = a_plot["연도"].astype(int)
 a_plot["rank"] = a_plot["rank"].astype(int)
 a_plot = a_plot.sort_values("연도")
 
-st.subheader("하단 분석 결과")
+st.subheader("랭킹변화")
 
 # ---------- 1행 ----------
 l1, r1 = st.columns(2, gap="large")
