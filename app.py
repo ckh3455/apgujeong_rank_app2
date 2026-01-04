@@ -141,24 +141,24 @@ LOG_GID = int(st.secrets.get("log_gid", DEFAULT_LOG_GID))
 # 차트 스타일(스크립트 내에서만 수정)
 # =========================
 ZONE_RANK_STYLE = {
-    "line_color": "#1f77b4",
+    "line_color": "#00F7FF",
     "line_width": 2.5,
     "line_style": "-",
     "marker": "o",
     "marker_size": 7,
-    "marker_face": "#ffffff",
-    "marker_edge": "#1f77b4",
-    "marker_edge_width": 1.2,
+    "marker_face": "#8CE4FF",
+    "marker_edge": "#00F7FF",
+    "marker_edge_width": 0.5,
 }
 ALL_RANK_STYLE = {
-    "line_color": "#d62728",
+    "line_color": "#FF76CE",
     "line_width": 2.5,
     "line_style": "-",
     "marker": "o",
     "marker_size": 7,
-    "marker_face": "#ffffff",
-    "marker_edge": "#d62728",
-    "marker_edge_width": 1.2,
+    "marker_face": "#FF7DB0",
+    "marker_edge": "#FF76CE",
+    "marker_edge_width": 0.5,
 }
 SEL_PRICE_STYLE = {
     "line_color": "#2ca02c",
