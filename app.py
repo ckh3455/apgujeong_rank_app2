@@ -556,6 +556,15 @@ def normalize_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     """Backward-compatible wrapper: normalize/clean the raw sheet dataframe."""
     return _clean_main_df(df_raw)
 
+
+def cast_numeric(df: pd.DataFrame, year_cols: list[str]) -> pd.DataFrame:
+    """Backward-compatible wrapper: coerce year columns to numeric.
+
+    Older versions of the app used `cast_numeric(df, year_cols)`.
+    In this codebase the implementation is `_coerce_numeric`.
+    """
+    return _coerce_numeric(df, year_cols)
+
 def _fmt_rank(rank, total) -> str:
     if pd.isna(rank) or pd.isna(total):
         return ""
