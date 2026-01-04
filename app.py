@@ -1851,61 +1851,87 @@ else:
                 # --- 3개 단지를 하나의 화살표 그래프로 표현 ---
                 import matplotlib.pyplot as plt
 
-                fig, ax = plt.subplots()
+                # 요청 색상(기준/비교1/비교2)
+                COLORS = ["#FF7DB0", "#00CAFF", "#B6F500"]
 
-                def _arrow_series(p0: float, r0: float, p1: float, r1: float, label: str):
-                    ax.plot([p0, p1], [r0, r1], marker="o", label=label)
-                    ax.annotate(
-                        "",
-                        xy=(p1, r1),
-                        xytext=(p0, r0),
-                        arrowprops=dict(arrowstyle="->", lw=2),
-                    )
+                fig, ax = plt.subplots()
 
                 base_leg = f"기준단지: {legend_unit_label(base_rep['zone'], base_rep['pyeong_raw'], base_rep['dong'], base_rep['ho'])}"
                 cmp1_leg = f"비교단지 1: {legend_unit_label(rep1['zone'], rep1['pyeong_raw'], rep1['dong'], rep1['ho'])}"
                 cmp2_leg = f"비교단지 2: {legend_unit_label(rep2['zone'], rep2['pyeong_raw'], rep2['dong'], rep2['ho'])}"
 
-                _arrow_series(
-                    p0=float(base_rep["price_2016"]), r0=float(base_rep["rank_2016"]),
-                    p1=float(base_rep["price_last"]), r1=float(base_rep["rank_last"]),
-                    label=base_leg,
-                )
-                _arrow_series(
-                    p0=float(rep1["price_2016"]), r0=float(rep1["rank_2016"]),
-                    p1=float(rep1["price_last"]), r1=float(rep1["rank_last"]),
-                    label=cmp1_leg,
-                )
-                _arrow_series(
-                    p0=float(rep2["price_2016"]), r0=float(rep2["rank_2016"]),
-                    p1=float(rep2["price_last"]), r1=float(rep2["rank_last"]),
-                    label=cmp2_leg,
-                )
+                series = [
+                    (base_leg, float(base_rep["price_2016"]), float(base_rep["rank_2016"]), float(base_rep["price_last"]), float(base_rep["rank_last"]), COLORS[0]),
+                    (cmp1_leg, float(rep1["price_2016"]), float(rep1["rank_2016"]), float(rep1["price_last"]), float(rep1["rank_last"]), COLORS[1]),
+                    (cmp2_leg, float(rep2["price_2016"]), float(rep2["rank_2016"]), float(rep2["price_last"]), float(rep2["rank_last"]), COLORS[2]),
+                ]
+
+                prices = [p for _, p0, _, p1, _, _ in series for p in (p0, p1)]
+                ranks  = [r for _, _, r0, _, r1, _ in series for r in (r0, r1)]
+                pmin, pmax = min(prices), max(prices)
+                p_mid = (pmin + pmax) / 2.0
+
+                def _pt_text(year: str, price: float, rank: float) -> str:
+                    return f"{year}\n{price:.2f}억\n{int(rank):,}위"
+
+                def _annot_point(x: float, y: float, txt: str, color: str, idx: int, is_start: bool):
+                    # x 위치에 따라 좌/우로 분기(그래프 밖으로 잘리는 것 방지)
+                    place_right = (x <= p_mid)
+                    xoff = (12 + idx * 3) if place_right else -(12 + idx * 3)
+                    ha = "left" if place_right else "right"
+
+                    # 단지별로 수직 오프셋을 다르게 줘서 겹침 최소화
+                    if is_start:
+                        v_list = [18, -14, -46]   # 기준/비교1/비교2
+                    else:
+                        v_list = [-46, 18, -14]   # 도달점은 다른 패턴
+                    yoff = v_list[idx] if idx < len(v_list) else 18
+
+                    ax.annotate(
+                        txt,
+                        xy=(x, y),
+                        xytext=(xoff, yoff),
+                        textcoords="offset points",
+                        ha=ha,
+                        va="center",
+                        fontsize=9.5,
+                        fontweight="bold",
+                        color=color,
+                        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=color, alpha=0.82),
+                        zorder=5,
+                    )
+
+                # 3개 단지 라인/마커/화살표 + 시작/도달 라벨
+                for i, (label, p0, r0, p1, r1, color) in enumerate(series):
+                    # 라인 + 마커(라인색=마커색)
+                    ax.plot([p0, p1], [r0, r1], marker="o", linewidth=2.6, color=color, label=label, zorder=3)
+                    # 화살표(선색=마커색)
+                    ax.annotate(
+                        "",
+                        xy=(p1, r1),
+                        xytext=(p0, r0),
+                        arrowprops=dict(arrowstyle="->", lw=2.6, color=color),
+                        zorder=2,
+                    )
+                    # 시작/도달점 값 표시(금액/순위)
+                    _annot_point(p0, r0, _pt_text("2016", p0, r0), color=color, idx=i, is_start=True)
+                    _annot_point(p1, r1, _pt_text(str(last_year), p1, r1), color=color, idx=i, is_start=False)
 
                 ax.set_title(f"2016 → {last_year} 공시가격/순위 이동 (3개 단지)")
-                ax.set_xlabel("공시가격")
-                ax.set_ylabel("순위")
+                ax.set_xlabel("공시가격(억)")
+                ax.set_ylabel("순위(작을수록 상위)")
 
-                prices = [
-                    float(base_rep["price_2016"]), float(base_rep["price_last"]),
-                    float(rep1["price_2016"]), float(rep1["price_last"]),
-                    float(rep2["price_2016"]), float(rep2["price_last"]),
-                ]
-                ranks = [
-                    float(base_rep["rank_2016"]), float(base_rep["rank_last"]),
-                    float(rep1["rank_2016"]), float(rep1["rank_last"]),
-                    float(rep2["rank_2016"]), float(rep2["rank_last"]),
-                ]
-
-                pmin, pmax = min(prices), max(prices)
+                # x/y 범위 패딩
                 prange = (pmax - pmin) if (pmax - pmin) != 0 else max(abs(pmax), 1.0)
-                ax.set_xlim(pmin - prange * 0.05, pmax + prange * 0.05)
+                ax.set_xlim(pmin - prange * 0.06, pmax + prange * 0.06)
 
                 rmin, rmax = min(ranks), max(ranks)
-                rpad = max((rmax - rmin) * 0.05, 1.0)
-                ax.set_ylim(rmax + rpad, rmin - rpad)
+                rpad = max((rmax - rmin) * 0.06, 1.0)
+                ax.set_ylim(rmax + rpad, rmin - rpad)  # 순위 축 반전
 
-                ax.legend()
+                ax.grid(True, alpha=0.25)
+                ax.legend(loc="best")
+                fig.tight_layout()
                 st.pyplot(fig, use_container_width=True)
         else:
             if not can_compare:
