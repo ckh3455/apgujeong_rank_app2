@@ -1916,67 +1916,80 @@ else:
                     x_min, x_max = min(all_years), max(all_years)
                     x_mid = (x_min + x_max) / 2.0
 
-                    from matplotlib import patheffects as pe
+                                        from matplotlib import patheffects as pe
 
-                    def _pt_text(year: int, rank_v: float) -> str:
+                    def _pt_text(rank_v: float) -> str:
+                        """순위 라벨 텍스트(연도는 x축에 있으므로 숫자만 표시)."""
                         try:
                             r_i = int(round(float(rank_v)))
                         except Exception:
                             r_i = int(rank_v) if rank_v is not None else 0
-                        return f"{year}\n{r_i:,}위"
+                        return f"{r_i:,}위"
 
-                    def _annot_point(x: int, y: float, text: str, *, color: str, idx: int, is_start: bool):
-                        # 단지별 오프셋 패턴 + 좌/우 바깥쪽 배치
-                        if is_start:
-                            dy_pattern = [10, -12, 14]
-                            dy = dy_pattern[idx % 3]
-                            dx = -14 if x <= x_mid else 14
-                        else:
-                            dy_pattern = [-10, 12, -14]
-                            dy = dy_pattern[idx % 3]
-                            dx = 14 if x <= x_mid else -14
-
-                        dx += (idx - 1) * 2
-                        ha = "left" if dx > 0 else "right"
-
+                    def _annot_point(x: int, y: float, text: str, *, color: str, dx: float, dy: float, fontsize: int = 8):
                         ann = ax.annotate(
                             text,
                             xy=(x, y),
                             xytext=(dx, dy),
                             textcoords="offset points",
-                            fontsize=9,
+                            fontsize=fontsize,
                             color=color,
-                            ha=ha,
-                            va="center",
+                            ha="center",
+                            va="bottom",
                             zorder=6,
                         )
                         ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
 
                     # 선 + 마커(색상 고정)
+                    # 연도별 라벨 겹침 최소화: 각 연도에서 3개 단지 순위를 정렬해 서로 다른 높이로 배치
+                    x_ticks = sorted(set(all_years))
+                    ax.set_xticks(x_ticks)
+                    x_min_tick, x_max_tick = min(x_ticks), max(x_ticks)
+                    year_order = {}
+                    for y in x_ticks:
+                        items = []
+                        for si, (_lbl, _yrs, _rs, _c) in enumerate(unit_series):
+                            if y in _yrs:
+                                try:
+                                    j = _yrs.index(y)
+                                except Exception:
+                                    j = list(_yrs).index(y)
+                                items.append((si, _rs[j]))
+                        items = sorted(items, key=lambda t: t[1])  # 순위 값(작을수록 상위)
+                        year_order[y] = {si: pos for pos, (si, _v) in enumerate(items)}
+
+                    dy_levels = [10, 22, 34]  # 텍스트를 포인트 '위'로 올리는 정도(포인트 단위)
+                    dx_levels = [-10, 0, 10]  # 좌우 분산
+
                     for i, (label, yrs, rs, color) in enumerate(unit_series):
                         if len(yrs) < 2:
                             continue
-                        ax.plot(yrs, rs, marker="o", linewidth=2.6, color=color, label=label, zorder=3)
+                        ax.plot(yrs, rs, marker="o", linewidth=2.6, markersize=7, color=color, label=label, zorder=3)
+                        # 모든 연도 라벨 표시(포인트 위), 연도별로 서로 다른 dy를 부여해 겹침 감소
+                        for x, y in zip(yrs, rs):
+                            pos = year_order.get(x, {}).get(i, i)
+                            dy = dy_levels[pos] if pos < len(dy_levels) else (10 + pos * 12)
+                            dx = dx_levels[pos] if pos < len(dx_levels) else 0
+                            # 양 끝 연도는 화면 밖으로 나가지 않게 안쪽으로 밀기
+                            if x == x_min_tick:
+                                dx = abs(dx) + 12
+                            elif x == x_max_tick:
+                                dx = -(abs(dx) + 12)
+                            _annot_point(int(x), float(y), _pt_text(y), color=color, dx=dx, dy=dy, fontsize=8)
 
-                        # 텍스트는 처음/끝만 (순위만 표시)
-                        _annot_point(yrs[0], rs[0], _pt_text(yrs[0], rs[0]), color=color, idx=i, is_start=True)
-                        _annot_point(yrs[-1], rs[-1], _pt_text(yrs[-1], rs[-1]), color=color, idx=i, is_start=False)
+                    ax.set_title(f"{start_year} → {end_year} 연도별 압구정 전체 순위 추이 (3개 단지)", fontsize=18)
+                    ax.set_xlabel("연도", labelpad=10)
+                    ax.set_ylabel("압구정 전체 순위", labelpad=10)
 
-                    ax.set_title(f"{start_year} → {end_year} 연도별 압구정 전체 순위 추이 (3개 단지)")
-                    ax.set_xlabel("연도")
-                    ax.set_ylabel("압구정 전체 순위")
-
-                    # x축: 연도 고정 표시
-                    x_ticks = sorted(set(all_years))
-                    ax.set_xticks(x_ticks)
-
-                    # y축(순위): 값이 작을수록 상위이므로 위쪽으로 오게 반전
+                    # y축(순위): 값이 작을수록 상위이므로 위쪽으로 오게 반전 + 라벨 공간 확보
                     y_min, y_max = min(all_ranks), max(all_ranks)
                     y_range = (y_max - y_min) if (y_max - y_min) != 0 else max(abs(y_max), 1.0)
-                    ax.set_ylim(y_min - y_range * 0.08, y_max + y_range * 0.08)
+                    ax.set_ylim(y_min - y_range * 0.18, y_max + y_range * 0.10)
                     ax.invert_yaxis()
 
                     ax.grid(True, alpha=0.25)
+                    ax.tick_params(axis="x", labelsize=9, pad=6)
+                    ax.tick_params(axis="y", labelsize=9)
 
                     # 그래프 내 텍스트(제목/축/틱/범례) 엣지 적용
                     ax.title.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
@@ -1986,7 +1999,7 @@ else:
                     for _lab in (ax.get_xticklabels() + ax.get_yticklabels()):
                         _lab.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
 
-                    leg = ax.legend(loc="best")
+                    leg = ax.legend(loc="lower left", fontsize=9, framealpha=0.9, borderpad=0.4, labelspacing=0.4, handlelength=2)
                     if leg is not None:
                         for _lt in leg.get_texts():
                             _lt.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
