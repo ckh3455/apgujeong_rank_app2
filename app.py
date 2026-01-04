@@ -551,6 +551,11 @@ def _clean_main_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+
+def normalize_df(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Backward-compatible wrapper: normalize/clean the raw sheet dataframe."""
+    return _clean_main_df(df_raw)
+
 def _fmt_rank(rank, total) -> str:
     if pd.isna(rank) or pd.isna(total):
         return ""
@@ -1387,7 +1392,7 @@ with st.spinner("데이터를 불러오는 중..."):
         worksheet_name=MAIN_WORKSHEET_NAME if MAIN_WORKSHEET_NAME else None,
     )
 
-df = _clean_main_df(df_raw)
+df = normalize_df(df_raw)
 year_cols = _detect_year_cols(df)
 if not year_cols:
     st.error("연도 컬럼(예: 2016~2025)을 찾지 못했습니다. 시트의 헤더를 확인해 주세요.")
