@@ -1793,55 +1793,120 @@ else:
         # =========================
         can_compare = base_rep is not None and rep1 is not None and rep2 is not None
         if st.button("비교하기", key="cmp3_do_compare", type="secondary", disabled=not can_compare):
-            def _draw_one(base_u: dict, cmp_u: dict, title: str):
-                if base_u["price_2016"] is None or base_u["price_last"] is None or base_u["rank_2016"] is None or base_u["rank_last"] is None:
-                    st.warning("기준단지에 2016/최신연도 데이터가 부족합니다.")
-                    return
-                if cmp_u["price_2016"] is None or cmp_u["price_last"] is None or cmp_u["rank_2016"] is None or cmp_u["rank_last"] is None:
-                    st.warning("비교단지에 2016/최신연도 데이터가 부족합니다.")
-                    return
-
-                # 요약 표(기존 렌더 함수 재사용)
-                cmp_payload = {
-                    "year2016": "2016",
-                    "last_year": last_year,
-                    "base_price_2016": float(base_u["price_2016"]),
-                    "base_rank_2016": int(base_u["rank_2016"]),
-                    "base_price_last": float(base_u["price_last"]),
-                    "base_rank_last": int(base_u["rank_last"]),
-                    "cmp_zone": cmp_u["zone"],
-                    "cmp_complex": cmp_u["complex"],
-                    "cmp_dong": int(cmp_u["dong"]),
-                    "cmp_ho": int(cmp_u["ho"]),
-                    "cmp_price_2016": float(cmp_u["price_2016"]),
-                    "cmp_rank_2016": int(cmp_u["rank_2016"]),
-                    "cmp_price_last": float(cmp_u["price_last"]),
-                    "cmp_rank_last": int(cmp_u["rank_last"]),
-                    "diff_price_2016": abs(float(cmp_u["price_2016"]) - float(base_u["price_2016"])),
-                    "relative_rank_swing": abs((int(base_u["rank_last"]) - int(cmp_u["rank_last"])) - (int(base_u["rank_2016"]) - int(cmp_u["rank_2016"]))),
-                }
-
-                st.subheader(title)
-                sel_name = unit_str_pyeong_floor_only(base_u["zone"], base_u["complex"], base_u["pyeong_raw"], base_u["dong"], base_u["ho"])
-                cmp_name = unit_str_pyeong_floor_only(cmp_u["zone"], cmp_u["complex"], cmp_u["pyeong_raw"], cmp_u["dong"], cmp_u["ho"])
-                render_compare_year_table_html(cmp_payload, last_year, sel_name=sel_name, cmp_name=cmp_name)
-
-                sel_leg = f"기준단지: {legend_unit_label(base_u['zone'], base_u['pyeong_raw'], base_u['dong'], base_u['ho'])}"
-                cmp_leg = f"비교단지: {legend_unit_label(cmp_u['zone'], cmp_u['pyeong_raw'], cmp_u['dong'], cmp_u['ho'])}"
-
-                fig_move = plot_price_rank_arrow(
-                    base_p0=float(base_u["price_2016"]), base_r0=float(base_u["rank_2016"]),
-                    base_p1=float(base_u["price_last"]), base_r1=float(base_u["rank_last"]),
-                    cmp_p0=float(cmp_u["price_2016"]), cmp_r0=float(cmp_u["rank_2016"]),
-                    cmp_p1=float(cmp_u["price_last"]), cmp_r1=float(cmp_u["rank_last"]),
-                    last_year=last_year,
-                    sel_label=sel_leg,
-                    cmp_label=cmp_leg,
+            def _has_required(u: dict) -> bool:
+                return (
+                    u is not None
+                    and u.get("price_2016") is not None
+                    and u.get("price_last") is not None
+                    and u.get("rank_2016") is not None
+                    and u.get("rank_last") is not None
                 )
-                st.pyplot(fig_move, use_container_width=True)
 
-            _draw_one(base_rep, rep1, f"기준단지 vs 비교단지 1 (2016 → {last_year})")
-            _draw_one(base_rep, rep2, f"기준단지 vs 비교단지 2 (2016 → {last_year})")
+            if not _has_required(base_rep):
+                st.warning("기준단지에 2016/최신연도 데이터가 부족합니다.")
+            elif not _has_required(rep1):
+                st.warning("비교단지 1에 2016/최신연도 데이터가 부족합니다.")
+            elif not _has_required(rep2):
+                st.warning("비교단지 2에 2016/최신연도 데이터가 부족합니다.")
+            else:
+                # --- 요약 표는 기존 렌더 함수 재사용(탭으로 분리) ---
+                tab1, tab2 = st.tabs([f"기준단지 vs 비교단지 1", f"기준단지 vs 비교단지 2"])
+
+                def _render_table(base_u: dict, cmp_u: dict):
+                    cmp_payload = {
+                        "year2016": "2016",
+                        "last_year": last_year,
+                        "base_price_2016": float(base_u["price_2016"]),
+                        "base_rank_2016": int(base_u["rank_2016"]),
+                        "base_price_last": float(base_u["price_last"]),
+                        "base_rank_last": int(base_u["rank_last"]),
+                        "cmp_zone": cmp_u["zone"],
+                        "cmp_complex": cmp_u["complex"],
+                        "cmp_dong": int(cmp_u["dong"]),
+                        "cmp_ho": int(cmp_u["ho"]),
+                        "cmp_price_2016": float(cmp_u["price_2016"]),
+                        "cmp_rank_2016": int(cmp_u["rank_2016"]),
+                        "cmp_price_last": float(cmp_u["price_last"]),
+                        "cmp_rank_last": int(cmp_u["rank_last"]),
+                        "diff_price_2016": abs(float(cmp_u["price_2016"]) - float(base_u["price_2016"])),
+                        "relative_rank_swing": abs(
+                            (int(base_u["rank_last"]) - int(cmp_u["rank_last"]))
+                            - (int(base_u["rank_2016"]) - int(cmp_u["rank_2016"]))
+                        ),
+                    }
+
+                    sel_name = unit_str_pyeong_floor_only(
+                        base_u["zone"], base_u["complex"], base_u["pyeong_raw"], base_u["dong"], base_u["ho"]
+                    )
+                    cmp_name = unit_str_pyeong_floor_only(
+                        cmp_u["zone"], cmp_u["complex"], cmp_u["pyeong_raw"], cmp_u["dong"], cmp_u["ho"]
+                    )
+                    render_compare_year_table_html(cmp_payload, last_year, sel_name=sel_name, cmp_name=cmp_name)
+
+                with tab1:
+                    _render_table(base_rep, rep1)
+                with tab2:
+                    _render_table(base_rep, rep2)
+
+                # --- 3개 단지를 하나의 화살표 그래프로 표현 ---
+                import matplotlib.pyplot as plt
+
+                fig, ax = plt.subplots()
+
+                def _arrow_series(p0: float, r0: float, p1: float, r1: float, label: str):
+                    ax.plot([p0, p1], [r0, r1], marker="o", label=label)
+                    ax.annotate(
+                        "",
+                        xy=(p1, r1),
+                        xytext=(p0, r0),
+                        arrowprops=dict(arrowstyle="->", lw=2),
+                    )
+
+                base_leg = f"기준단지: {legend_unit_label(base_rep['zone'], base_rep['pyeong_raw'], base_rep['dong'], base_rep['ho'])}"
+                cmp1_leg = f"비교단지 1: {legend_unit_label(rep1['zone'], rep1['pyeong_raw'], rep1['dong'], rep1['ho'])}"
+                cmp2_leg = f"비교단지 2: {legend_unit_label(rep2['zone'], rep2['pyeong_raw'], rep2['dong'], rep2['ho'])}"
+
+                _arrow_series(
+                    p0=float(base_rep["price_2016"]), r0=float(base_rep["rank_2016"]),
+                    p1=float(base_rep["price_last"]), r1=float(base_rep["rank_last"]),
+                    label=base_leg,
+                )
+                _arrow_series(
+                    p0=float(rep1["price_2016"]), r0=float(rep1["rank_2016"]),
+                    p1=float(rep1["price_last"]), r1=float(rep1["rank_last"]),
+                    label=cmp1_leg,
+                )
+                _arrow_series(
+                    p0=float(rep2["price_2016"]), r0=float(rep2["rank_2016"]),
+                    p1=float(rep2["price_last"]), r1=float(rep2["rank_last"]),
+                    label=cmp2_leg,
+                )
+
+                ax.set_title(f"2016 → {last_year} 공시가격/순위 이동 (3개 단지)")
+                ax.set_xlabel("공시가격")
+                ax.set_ylabel("순위")
+
+                prices = [
+                    float(base_rep["price_2016"]), float(base_rep["price_last"]),
+                    float(rep1["price_2016"]), float(rep1["price_last"]),
+                    float(rep2["price_2016"]), float(rep2["price_last"]),
+                ]
+                ranks = [
+                    float(base_rep["rank_2016"]), float(base_rep["rank_last"]),
+                    float(rep1["rank_2016"]), float(rep1["rank_last"]),
+                    float(rep2["rank_2016"]), float(rep2["rank_last"]),
+                ]
+
+                pmin, pmax = min(prices), max(prices)
+                prange = (pmax - pmin) if (pmax - pmin) != 0 else max(abs(pmax), 1.0)
+                ax.set_xlim(pmin - prange * 0.05, pmax + prange * 0.05)
+
+                rmin, rmax = min(ranks), max(ranks)
+                rpad = max((rmax - rmin) * 0.05, 1.0)
+                ax.set_ylim(rmax + rpad, rmin - rpad)
+
+                ax.legend()
+                st.pyplot(fig, use_container_width=True)
         else:
             if not can_compare:
                 st.caption("기준단지/비교단지 1/2의 구역·단지·평형을 모두 선택하면 [비교하기] 버튼이 활성화됩니다.")
