@@ -613,6 +613,37 @@ def unit_str_pyeong_floor_only(zone: str, complex_name: str, pyeong_val, dong: i
     floor_txt = f"{floor}층" if floor is not None else "층?"
     pyeong_txt = _fmt_pyeong(pyeong_val)
     return f"{zone} / {complex_name} / {pyeong_txt} / {dong}동 / {floor_txt}"
+def detect_pyeong_col(df: pd.DataFrame) -> str | None:
+    """평형 컬럼명을 유연하게 탐색합니다."""
+    for c in ["평형", "평형(평)", "평", "평형_평", "평형평"]:
+        if c in df.columns:
+            return c
+    return None
+
+
+def get_pyeong_value(df_num: pd.DataFrame, zone: str, complex_name: str, dong: int, ho: int):
+    """선택 키(구역/단지/동/호)에 해당하는 평형 값을 반환합니다."""
+    pcol = detect_pyeong_col(df_num)
+    if pcol is None:
+        return pd.NA
+    m = (
+        (df_num["구역"] == zone)
+        & (df_num["단지명"] == complex_name)
+        & (df_num["동"] == dong)
+        & (df_num["호"] == ho)
+    )
+    sub = df_num.loc[m, pcol]
+    if sub.empty:
+        return pd.NA
+    return sub.iloc[0]
+
+
+def legend_unit_label(zone: str, pyeong_val, dong: int, ho: int) -> str:
+    """화살표 그래프 레전드용 라벨: 구역 + 평형 + 동/층"""
+    floor = infer_floor_from_ho(ho)
+    floor_txt = f"{floor}층" if floor is not None else "층?"
+    return f"{zone} {_fmt_pyeong(pyeong_val)} {dong}동/{floor_txt}"
+
 def infer_device_type() -> str:
     ua = ""
     try:
@@ -817,6 +848,7 @@ def find_candidates_by_2016_with_rank_inversion(
     base_key: tuple,
     year2016: str = "2016",
     last_year: str = "2025",
+    require_inversion: bool = True,
 ) -> pd.DataFrame:
     """(타구역) 2016 유사 + 순위 역전 후보들을 계산하여 DataFrame으로 반환합니다.
 
@@ -873,10 +905,13 @@ def find_candidates_by_2016_with_rank_inversion(
     diff_2016 = base_r2016 - cand["r2016"]
     diff_last = base_rlast - cand["rlast"]
 
-    # 순위 역전: 2016과 last_year 사이에 (선택-후보) 상대 순위차의 부호가 뒤집힘
-    cand = cand[(diff_2016 != 0) & (diff_last != 0) & ((diff_2016 * diff_last) < 0)].copy()
-    if cand.empty:
-        return pd.DataFrame()
+    # 역전 여부: 2016과 last_year 사이에 (선택-후보) 상대 순위차의 부호가 뒤집힘
+    cand["is_inversion"] = ((diff_2016 != 0) & (diff_last != 0) & ((diff_2016 * diff_last) < 0)).astype(int)
+
+    if require_inversion:
+        cand = cand[cand["is_inversion"] == 1].copy()
+        if cand.empty:
+            return pd.DataFrame()
 
     cand["diff_price_2016"] = (cand["p2016"] - base_p2016).abs()
     cand["cand_rank_change_abs"] = (cand["rlast"] - cand["r2016"]).abs()
@@ -900,6 +935,7 @@ def find_candidates_by_2016_with_rank_inversion(
             "cmp_rank_2016": cand["r2016"].astype(float),
             "cmp_price_last": cand["plast"].astype(float),
             "cmp_rank_last": cand["rlast"].astype(float),
+            "is_inversion": cand["is_inversion"].astype(int),
             "diff_price_2016": cand["diff_price_2016"].astype(float),
             "cand_rank_change_abs": cand["cand_rank_change_abs"].astype(float),
             "relative_rank_swing": cand["relative_rank_swing"].astype(float),
@@ -1579,13 +1615,17 @@ cand_all = find_candidates_by_2016_with_rank_inversion(
     base_key=(zone, complex_name, dong, ho),
     year2016="2016",
     last_year=last_year,
+    require_inversion=False,  # 역전 후보 우선 정렬 후, 부족하면 비역전 후보로 보강
 )
 
 if cand_all.empty:
-    st.info("조건(2016 유사 + 순위 역전)을 만족하는 타구역 후보를 찾지 못했습니다. (또는 2016/최신연도 데이터가 부족합니다.)")
+    st.info("타구역 비교 후보를 찾지 못했습니다. (2016/최신연도 데이터가 부족할 수 있습니다.)")
 else:
-    cand_sorted = cand_all.sort_values(["diff_price_2016", "relative_rank_swing"], ascending=[True, False]).reset_index(drop=True)
-
+    inv_zone_n = int(cand_all.loc[cand_all["is_inversion"] == 1, "cmp_zone"].astype(str).nunique())
+    cand_sorted = cand_all.sort_values(
+        ["is_inversion", "diff_price_2016", "relative_rank_swing"],
+        ascending=[False, True, False],
+    ).reset_index(drop=True)
     # (요청) 구역당 1개만 노출 + 완전 동일 키 중복 제거
     picked_idx: list[int] = []
     used_zones: set[str] = set()
@@ -1618,7 +1658,7 @@ else:
         best_pos = int(cand5["relative_rank_swing"].astype(float).values.argmax())
         st.session_state["cmp_pick_key"] = cand5_keys[best_pos]
 
-    st.caption("아래 5개 후보는 '2016 가격이 가장 유사한' 순서로 정렬되어 있습니다. 우측의 [비교] 버튼으로 즉시 전환할 수 있습니다.")
+    st.caption(f"아래 후보는 '2016 가격 유사' 기준으로 정렬되며, '순위 역전' 후보를 우선 노출합니다. (역전 후보 구역 수: {inv_zone_n}) 우측의 [비교] 버튼으로 전환 가능합니다.")
 
     for i, r in enumerate(cand5.itertuples(index=False), start=1):
         row_key = f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
@@ -1687,6 +1727,12 @@ else:
     sel_name = unit_str_floor_only(zone, complex_name, dong, ho)
     cmp_name = unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)
     render_compare_year_table_html(cmp, last_year, sel_name=sel_name, cmp_name=cmp_name)
+    sel_pyeong = get_pyeong_value(df_num, zone, complex_name, dong, ho)
+    cmp_pyeong = getattr(pick_row, "cmp_pyeong", pd.NA)
+
+    sel_leg = f"선택: {legend_unit_label(zone, sel_pyeong, dong, ho)}"
+    cmp_leg = f"비교: {legend_unit_label(cmp_zone, cmp_pyeong, cmp_dong, cmp_ho)}"
+
 
     fig_move = plot_price_rank_arrow(
         base_p0=cmp["base_price_2016"], base_r0=cmp["base_rank_2016"],
@@ -1694,7 +1740,7 @@ else:
         cmp_p0=cmp["cmp_price_2016"], cmp_r0=cmp["cmp_rank_2016"],
         cmp_p1=cmp["cmp_price_last"], cmp_r1=cmp["cmp_rank_last"],
         last_year=last_year,
-        sel_label=f"선택: {zone}",
-        cmp_label=f"비교: {cmp_zone}",
+        sel_label=sel_leg,
+        cmp_label=cmp_leg,
     )
     st.pyplot(fig_move, use_container_width=True)
