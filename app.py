@@ -202,7 +202,7 @@ CMP_BAR_STYLE = {
 SHOW_RANK_LABELS = True
 RANK_LABEL_FONTSIZE = 9
 RANK_LABEL_Y_OFFSET = -22  # (음수일수록 위로 더 올라감)
-RANK_LABEL_BOLD = True
+RANK_LABEL_normal = True
 
 # 표/그래프 높이(좌우 패널 맞춤)
 RANK_PANEL_HEIGHT_PX = 560   # 좌측 표, 우측 그래프를 동일 높이로 맞춤
@@ -1062,7 +1062,7 @@ def plot_rank_line(years: list[int], ranks: list[int], title: str, style: dict):
                 ha="center",
                 va="bottom",
                 fontsize=RANK_LABEL_FONTSIZE,
-                fontweight="bold",
+                fontweight="normal",
                 bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.9),
             )
 
@@ -1124,7 +1124,7 @@ def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: li
         ha="center",
         va="bottom" if sel_off[1] >= 0 else "top",
         fontsize=11,
-        fontweight="bold",
+        fontweight="normal",
         bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.9),
     )
     ax.annotate(
@@ -1135,7 +1135,7 @@ def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: li
         ha="center",
         va="bottom" if cmp_off[1] >= 0 else "top",
         fontsize=11,
-        fontweight="bold",
+        fontweight="normal",
         bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.9),
     )
 
@@ -1213,7 +1213,7 @@ def plot_price_compare_bars(
                 ha="center",
                 va="bottom",
                 fontsize=8,
-                fontweight="bold" if rect is bars[-1] else "normal",
+                fontweight="normal" if rect is bars[-1] else "normal",
             )
 
     _label_bars(b1, sel_prices)
@@ -1336,7 +1336,7 @@ def plot_price_rank_arrow(
         xytext=base0_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="bold",
+        fontweight="normal",
         color=SEL_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
         zorder=4,
@@ -1347,7 +1347,7 @@ def plot_price_rank_arrow(
         xytext=base1_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="bold",
+        fontweight="normal",
         color=SEL_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
         zorder=4,
@@ -1358,7 +1358,7 @@ def plot_price_rank_arrow(
         xytext=cmp0_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="bold",
+        fontweight="normal",
         color=CMP_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
         zorder=4,
@@ -1369,7 +1369,7 @@ def plot_price_rank_arrow(
         xytext=cmp1_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="bold",
+        fontweight="normal",
         color=CMP_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
         zorder=4,
