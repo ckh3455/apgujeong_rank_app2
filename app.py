@@ -1889,34 +1889,41 @@ else:
                     (cmp2_leg, int(rep2["idx"]), COLORS[2]),
                 ]
 
-                # 3개 단지 선그래프(연도 전체): x=연도, y=공시가격(억)
-                unit_series = []  # (label, years[int], prices[float], color)
+                # 3개 단지 선그래프(연도 전체): x=연도, y=압구정 전체 순위
+                unit_series = []  # (label, years[int], ranks[float], color)
                 all_years = []
-                all_prices = []
+                all_ranks = []
 
                 for label, ridx, color in units:
                     yrs = []
-                    ps = []
+                    rs = []
                     for y in year_cols_sorted:
-                        pval = pd.to_numeric(df_num.at[ridx, y], errors="coerce")
-                        if pd.notna(pval):
+                        rser = ranks_by_year.get(y)
+                        if rser is None:
+                            continue
+                        rval = pd.to_numeric(rser.at[ridx], errors="coerce")
+                        if pd.notna(rval):
                             yy = int(y)
                             yrs.append(yy)
-                            ps.append(float(pval))
+                            rs.append(float(rval))
                             all_years.append(yy)
-                            all_prices.append(float(pval))
-                    unit_series.append((label, yrs, ps, color))
+                            all_ranks.append(float(rval))
+                    unit_series.append((label, yrs, rs, color))
 
-                if not all_years or not all_prices:
-                    st.warning("선택된 단지들에서 연도별 공시가격 데이터를 찾지 못했습니다.")
+                if not all_years or not all_ranks:
+                    st.warning("선택된 단지들에서 연도별 '압구정 전체 순위' 데이터를 찾지 못했습니다.")
                 else:
                     x_min, x_max = min(all_years), max(all_years)
                     x_mid = (x_min + x_max) / 2.0
 
                     from matplotlib import patheffects as pe
 
-                    def _pt_text(year: int, price: float) -> str:
-                        return f"{year}\n{price:.2f}억"
+                    def _pt_text(year: int, rank_v: float) -> str:
+                        try:
+                            r_i = int(round(float(rank_v)))
+                        except Exception:
+                            r_i = int(rank_v) if rank_v is not None else 0
+                        return f"{year}\n{r_i:,}위"
 
                     def _annot_point(x: int, y: float, text: str, *, color: str, idx: int, is_start: bool):
                         # 단지별 오프셋 패턴 + 좌/우 바깥쪽 배치
@@ -1946,27 +1953,28 @@ else:
                         ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
 
                     # 선 + 마커(색상 고정)
-                    for i, (label, yrs, ps, color) in enumerate(unit_series):
+                    for i, (label, yrs, rs, color) in enumerate(unit_series):
                         if len(yrs) < 2:
                             continue
-                        ax.plot(yrs, ps, marker="o", linewidth=2.6, color=color, label=label, zorder=3)
+                        ax.plot(yrs, rs, marker="o", linewidth=2.6, color=color, label=label, zorder=3)
 
-                        # 텍스트는 처음/끝만
-                        _annot_point(yrs[0], ps[0], _pt_text(yrs[0], ps[0]), color=color, idx=i, is_start=True)
-                        _annot_point(yrs[-1], ps[-1], _pt_text(yrs[-1], ps[-1]), color=color, idx=i, is_start=False)
+                        # 텍스트는 처음/끝만 (순위만 표시)
+                        _annot_point(yrs[0], rs[0], _pt_text(yrs[0], rs[0]), color=color, idx=i, is_start=True)
+                        _annot_point(yrs[-1], rs[-1], _pt_text(yrs[-1], rs[-1]), color=color, idx=i, is_start=False)
 
-                    ax.set_title(f"{start_year} → {end_year} 연도별 공시가격 추이 (3개 단지)")
+                    ax.set_title(f"{start_year} → {end_year} 연도별 압구정 전체 순위 추이 (3개 단지)")
                     ax.set_xlabel("연도")
-                    ax.set_ylabel("공시가격(억)")
+                    ax.set_ylabel("압구정 전체 순위")
 
                     # x축: 연도 고정 표시
                     x_ticks = sorted(set(all_years))
                     ax.set_xticks(x_ticks)
 
-                    # y축 패딩
-                    y_min, y_max = min(all_prices), max(all_prices)
+                    # y축(순위): 값이 작을수록 상위이므로 위쪽으로 오게 반전
+                    y_min, y_max = min(all_ranks), max(all_ranks)
                     y_range = (y_max - y_min) if (y_max - y_min) != 0 else max(abs(y_max), 1.0)
                     ax.set_ylim(y_min - y_range * 0.08, y_max + y_range * 0.08)
+                    ax.invert_yaxis()
 
                     ax.grid(True, alpha=0.25)
 
@@ -1982,7 +1990,6 @@ else:
                     if leg is not None:
                         for _lt in leg.get_texts():
                             _lt.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
-
                     fig.tight_layout()
                     st.pyplot(fig, use_container_width=True)
         else:
