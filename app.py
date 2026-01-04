@@ -145,9 +145,9 @@ ZONE_RANK_STYLE = {
     "line_width": 2.5,
     "line_style": "-",
     "marker": "o",
-    "marker_size": 7,
+    "marker_size": 10,
     "marker_face": "#8CE4FF",
-    "marker_edge": "#00F7FF",
+    "marker_edge": "black",
     "marker_edge_width": 0.5,
 }
 ALL_RANK_STYLE = {
@@ -155,29 +155,29 @@ ALL_RANK_STYLE = {
     "line_width": 2.5,
     "line_style": "-",
     "marker": "o",
-    "marker_size": 7,
+    "marker_size": 10,
     "marker_face": "#FF7DB0",
-    "marker_edge": "#FF76CE",
+    "marker_edge": "black",
     "marker_edge_width": 0.5,
 }
 SEL_PRICE_STYLE = {
-    "line_color": "#2ca02c",
+    "line_color": "#00F7FF",
     "line_width": 2.5,
     "line_style": "-",
     "marker": "o",
     "marker_size": 7,
     "marker_face": "#ffffff",
-    "marker_edge": "#2ca02c",
+    "marker_edge": "black",
     "marker_edge_width": 1.2,
 }
 CMP_PRICE_STYLE = {
-    "line_color": "#9467bd",
+    "line_color": "#FF76CE",
     "line_width": 2.5,
     "line_style": "--",
     "marker": "s",
     "marker_size": 7,
     "marker_face": "#ffffff",
-    "marker_edge": "#9467bd",
+    "marker_edge": "black",
     "marker_edge_width": 1.2,
 }
 
