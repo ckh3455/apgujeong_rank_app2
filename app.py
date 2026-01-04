@@ -1966,16 +1966,25 @@ else:
                         if df_long.empty:
                             st.warning("막대 레이스 그래프를 그릴 데이터가 없습니다.")
                         else:
+                            # y축 카테고리 순서를 고정(막대 위치가 연도에 따라 위아래로 바뀌지 않도록)
+                            cat_display = [base_lbl, c1_lbl, c2_lbl]  # 화면에서 위→아래로 보이길 원하는 순서
+                            cat_order = cat_display[::-1]            # Plotly는 (아래→위)로 카테고리를 쌓으므로 역순 사용
+
                             def _bar_for_year(yy: int):
                                 d = df_long[df_long["year"] == yy].copy()
-                                d = d.sort_values("score", ascending=True)  # 아래→위: 점수 낮은(하위)→높은(상위)
+                                # 카테고리(막대 위치) 고정: 연도별로 순위가 바뀌어도 위/아래 위치가 변하지 않음
+                                d = d.set_index("label").reindex(cat_order).reset_index()
+                                d["score"] = pd.to_numeric(d["score"], errors="coerce").fillna(0.0)
+                                d["rank"] = pd.to_numeric(d["rank"], errors="coerce")
+
                                 bar = go.Bar(
                                     x=d["score"],
                                     y=d["label"],
                                     orientation="h",
-                                    marker=dict(color=[color_map.get(v, "#999999") for v in d["label"]]),
-                                    text=[f"{int(r):,}위" for r in d["rank"]],
+                                    marker=dict(color=[color_map.get(lbl, "#999999") for lbl in d["label"]]),
+                                    text=[f"{int(r):,}위" if pd.notna(r) else "" for r in d["rank"]],
                                     textposition="outside",
+                                    textfont=dict(size=14, family="Arial Black"),
                                     cliponaxis=False,
                                 )
                                 return bar
@@ -1987,16 +1996,16 @@ else:
                                 data=[_bar_for_year(y0)],
                                 layout=go.Layout(
                                     title=f"{start_year} → {end_year} 연도별 압구정 전체 순위 경쟁 (3개 단지)",
-                                    xaxis=dict(title="상위 점수(높을수록 상위)", range=[0, max(df_long["score"].max(), 1.0) * 1.08]),
-                                    yaxis=dict(title="", automargin=True),
-                                    margin=dict(l=160, r=40, t=70, b=60),
-                                    height=520,
-                                    font=dict(size=12),
+                                    xaxis=dict(title="상위 점수(높을수록 상위)", range=[0, max(df_long["score"].max(), 1.0) * 1.12], tickfont=dict(size=12), titlefont=dict(size=13)),
+                                    yaxis=dict(title="", automargin=True, categoryorder="array", categoryarray=cat_order, tickfont=dict(size=15, family="Arial Black")),
+                                    margin=dict(l=190, r=90, t=95, b=130),
+                                    height=560,
+                                    font=dict(size=12, family="Malgun Gothic"),
                                     updatemenus=[
                                         dict(
                                             type="buttons",
                                             direction="left",
-                                            x=0.01, y=1.18,
+                                            x=0.01, y=1.25,
                                             buttons=[
                                                 dict(
                                                     label="Play",
@@ -2016,8 +2025,8 @@ else:
                                     ],
                                     sliders=[
                                         dict(
-                                            x=0.01, y=1.06, len=0.98,
-                                            currentvalue=dict(prefix="연도: "),
+                                            x=0.01, y=-0.18, len=0.98,
+                                            currentvalue=dict(prefix="연도: ", font=dict(size=14, family="Arial Black")),
                                             steps=[
                                                 dict(
                                                     method="animate",
