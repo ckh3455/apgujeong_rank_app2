@@ -1605,142 +1605,243 @@ with r2:
 
 st.divider()
 
-st.markdown("**3) 2016년 유사 + 순위 역전(상대변동 최대) 타구역 후보 5개 (행별 비교 버튼)**")
+st.markdown("**3) 타구역 비교 (기준단지 1개 + 비교단지 2개 선택 → 비교하기)**")
 
 last_year = str(max(int(y) for y in year_cols))
 
-cand_all = find_candidates_by_2016_with_rank_inversion(
-    df_num=df_num,
-    base_zone=zone,
-    base_key=(zone, complex_name, dong, ho),
-    year2016="2016",
-    last_year=last_year,
-    require_inversion=False,  # 역전 후보 우선 정렬 후, 부족하면 비역전 후보로 보강
-)
-
-if cand_all.empty:
-    st.info("타구역 비교 후보를 찾지 못했습니다. (2016/최신연도 데이터가 부족할 수 있습니다.)")
+pyeong_col = detect_pyeong_col(df_num)
+if pyeong_col is None:
+    st.info("평형 컬럼(예: '평형' 또는 '평형(평)')이 없어 3번 비교 기능을 사용할 수 없습니다.")
 else:
-    inv_zone_n = int(cand_all.loc[cand_all["is_inversion"] == 1, "cmp_zone"].astype(str).nunique())
-    cand_sorted = cand_all.sort_values(
-        ["is_inversion", "diff_price_2016", "relative_rank_swing"],
-        ascending=[False, True, False],
-    ).reset_index(drop=True)
-    # (요청) 구역당 1개만 노출 + 완전 동일 키 중복 제거
-    picked_idx: list[int] = []
-    used_zones: set[str] = set()
-    used_keys: set[str] = set()
-    for _idx, _r in enumerate(cand_sorted.itertuples(index=False)):
-        _key = f"{_r.cmp_zone}|{_r.cmp_complex}|{int(_r.cmp_dong)}|{int(_r.cmp_ho)}"
-        _z = str(_r.cmp_zone)
-        if _key in used_keys:
-            continue
-        if _z in used_zones:
-            continue
-        used_keys.add(_key)
-        used_zones.add(_z)
-        picked_idx.append(_idx)
-        if len(picked_idx) >= 5:
-            break
+    # --- 공통: 전체 순위(2016/최신연도) 시리즈를 미리 계산 ---
+    if "2016" not in df_num.columns or last_year not in df_num.columns:
+        st.info("2016 또는 최신연도 컬럼이 없어 3번 비교 기능을 사용할 수 없습니다.")
+    else:
+        r2016_all = df_num["2016"].rank(method="min", ascending=False)
+        rlast_all = df_num[last_year].rank(method="min", ascending=False)
 
-    cand5 = cand_sorted.iloc[picked_idx].reset_index(drop=True) if picked_idx else cand_sorted.head(1).reset_index(drop=True)
-    if len(cand5) < 5:
-        st.info(f"구역당 1개만 표시하도록 설정되어 후보 {len(cand5)}개만 표시됩니다.")
+        def _pyeong_sort_key(s: str):
+            # '56평' / '56.5평' / '56' 등 대응
+            import re
+            m = re.search(r"(\d+(?:\.\d+)?)", str(s))
+            return float(m.group(1)) if m else 999999.0
 
-    # 후보 키 목록
-    cand5_keys = [
-        f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
-        for r in cand5.itertuples(index=False)
-    ]
+        def _get_pyeong_options(_zone: str, _complex: str) -> list[str]:
+            sub = df_num[(df_num["구역"] == _zone) & (df_num["단지명"] == _complex)]
+            if sub.empty:
+                return []
+            vals = sub[pyeong_col].apply(_fmt_pyeong).dropna().astype(str).unique().tolist()
+            vals = [v for v in vals if str(v).strip() and str(v).strip().lower() != "nan"]
+            vals = sorted(set(vals), key=_pyeong_sort_key)
+            return vals
 
-    # 기본 선택(현재 선택이 유효하지 않으면, 5개 중 상대변동이 가장 큰 후보를 기본으로 선택)
-    if st.session_state.get("cmp_pick_key") not in cand5_keys:
-        best_pos = int(cand5["relative_rank_swing"].astype(float).values.argmax())
-        st.session_state["cmp_pick_key"] = cand5_keys[best_pos]
+        def _pick_representative(_zone: str, _complex: str, _pyeong_fmt: str):
+            """(구역/단지/평형) 중 최신연도 공시가격이 가장 높은 1개 동/호를 대표로 선택."""
+            sub = df_num[(df_num["구역"] == _zone) & (df_num["단지명"] == _complex)].copy()
+            if sub.empty:
+                return None
 
-    st.caption(f"아래 후보는 '2016 가격 유사' 기준으로 정렬되며, '순위 역전' 후보를 우선 노출합니다. (역전 후보 구역 수: {inv_zone_n}) 우측의 [비교] 버튼으로 전환 가능합니다.")
+            sub["_pyeong_fmt"] = sub[pyeong_col].apply(_fmt_pyeong)
+            sub = sub[sub["_pyeong_fmt"] == _pyeong_fmt].copy()
+            if sub.empty:
+                return None
 
-    for i, r in enumerate(cand5.itertuples(index=False), start=1):
-        row_key = f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
-        left, right = st.columns([0.82, 0.18])
-
-        with left:
-            pyeong_val = getattr(r, "cmp_pyeong", pd.NA)
-            if pyeong_val is not None and not pd.isna(pyeong_val):
-                unit = unit_str_pyeong_floor_only(r.cmp_zone, r.cmp_complex, pyeong_val, int(r.cmp_dong), int(r.cmp_ho))
+            # 대표 선택: 최신연도(last_year) 공시가격 최대 → 없으면 2016 최대 → 그래도 없으면 첫 행
+            p_last = pd.to_numeric(sub[last_year], errors="coerce")
+            if p_last.notna().any():
+                rep_idx = int(p_last.idxmax())
             else:
-                unit = unit_str_floor_only(r.cmp_zone, r.cmp_complex, int(r.cmp_dong), int(r.cmp_ho))
-            st.markdown(
-                f"**{i}. {unit}**  \n"
-                f"- 2016 가격차: **{float(r.diff_price_2016):.2f}억** | 상대 순위차 변화량: **{float(r.relative_rank_swing):.0f}**  \n"
-                f"- 2016(가격/순위): {float(r.cmp_price_2016):.2f}억 / {int(r.cmp_rank_2016):,}위 → "
-                f"{last_year}(가격/순위): {float(r.cmp_price_last):.2f}억 / {int(r.cmp_rank_last):,}위"
+                p_2016 = pd.to_numeric(sub["2016"], errors="coerce")
+                rep_idx = int(p_2016.idxmax()) if p_2016.notna().any() else int(sub.index[0])
+
+            row = df_num.loc[rep_idx]
+            rep_dong = int(row["동"])
+            rep_ho = int(row["호"])
+            rep_pyeong_raw = row[pyeong_col]
+
+            p2016 = pd.to_numeric(row.get("2016", pd.NA), errors="coerce")
+            plast = pd.to_numeric(row.get(last_year, pd.NA), errors="coerce")
+            r2016 = r2016_all.loc[rep_idx]
+            rlast = rlast_all.loc[rep_idx]
+
+            return {
+                "idx": rep_idx,
+                "zone": _zone,
+                "complex": _complex,
+                "pyeong_raw": rep_pyeong_raw,
+                "pyeong_fmt": _pyeong_fmt,
+                "dong": rep_dong,
+                "ho": rep_ho,
+                "price_2016": float(p2016) if pd.notna(p2016) else None,
+                "price_last": float(plast) if pd.notna(plast) else None,
+                "rank_2016": int(r2016) if pd.notna(r2016) else None,
+                "rank_last": int(rlast) if pd.notna(rlast) else None,
+            }
+
+        def _unit_brief(u: dict) -> str:
+            floor = infer_floor_from_ho(u["ho"])
+            floor_txt = f"{floor}층" if floor is not None else "층?"
+            return f"{u['zone']} / {u['complex']} / {u['pyeong_fmt']} / {u['dong']}동 / {floor_txt}"
+
+        st.caption(
+            f"각 단지의 **선택한 평형**에서 **{last_year} 공시가격이 가장 높은 1개 동/호**를 대표로 자동 선택해 비교합니다."
+        )
+
+        # =========================
+        # 1) 기준단지 선택
+        # =========================
+        c1, c2, c3 = st.columns(3, gap="small")
+
+        # 기본값: 상단(구역/동/호 선택)에서 이미 선택된 값이 있으면 그걸 우선 사용
+        try:
+            default_base_zone = zone if zone in zones else zones[0]
+        except Exception:
+            default_base_zone = zones[0]
+
+        with c1:
+            base_zone = st.selectbox(
+                "기준단지 구역",
+                zones,
+                index=(zones.index(default_base_zone) if default_base_zone in zones else 0),
+                key="cmp3_base_zone",
             )
-        with right:
-            is_current = (st.session_state.get("cmp_pick_key") == row_key)
-            btn_label = "선택됨" if is_current else "비교"
-            if st.button(btn_label, key=f"cmp_btn_{i}_{row_key}", type="secondary", disabled=is_current):
-                st.session_state["cmp_pick_key"] = row_key
 
-    # 선택된 후보로 비교 출력
-    pick_key = st.session_state.get("cmp_pick_key")
-    pick_row = None
-    for r in cand5.itertuples(index=False):
-        row_key = f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
-        if row_key == pick_key:
-            pick_row = r
-            break
+        base_complex_list = sorted(df_num[df_num["구역"] == base_zone]["단지명"].dropna().unique().tolist())
+        if not base_complex_list:
+            st.info("기준단지 구역에 단지 데이터가 없습니다.")
+            base_complex = None
+        else:
+            try:
+                default_base_complex = complex_name if (base_zone == zone and complex_name in base_complex_list) else base_complex_list[0]
+            except Exception:
+                default_base_complex = base_complex_list[0]
 
-    if pick_row is None:
-        pick_row = cand5.iloc[0]
+            with c2:
+                base_complex = st.selectbox(
+                    "기준단지 단지명",
+                    base_complex_list,
+                    index=base_complex_list.index(default_base_complex) if default_base_complex in base_complex_list else 0,
+                    key="cmp3_base_complex",
+                )
 
-    cmp_zone = str(pick_row.cmp_zone)
-    cmp_complex = str(pick_row.cmp_complex)
-    cmp_dong = int(pick_row.cmp_dong)
-    cmp_ho = int(pick_row.cmp_ho)
+        base_pyeong = None
+        if base_complex:
+            base_pyeong_list = _get_pyeong_options(base_zone, base_complex)
+            if not base_pyeong_list:
+                st.info("기준단지에서 평형 후보를 찾지 못했습니다.")
+            else:
+                # 상단 선택(구역/동/호)의 평형이 있으면 그걸 기본값으로
+                default_p = None
+                if base_zone == zone and base_complex == complex_name:
+                    sel_p = get_pyeong_value(df_num, zone, complex_name, dong, ho)
+                    if sel_p is not None and not pd.isna(sel_p):
+                        default_p = _fmt_pyeong(sel_p)
+                if default_p not in base_pyeong_list:
+                    default_p = base_pyeong_list[0]
 
-    cmp = {
-        "year2016": "2016",
-        "last_year": last_year,
+                with c3:
+                    base_pyeong = st.selectbox(
+                        "기준단지 평형",
+                        base_pyeong_list,
+                        index=base_pyeong_list.index(default_p) if default_p in base_pyeong_list else 0,
+                        key="cmp3_base_pyeong",
+                    )
 
-        "base_price_2016": float(pick_row.base_price_2016),
-        "base_rank_2016": int(pick_row.base_rank_2016),
-        "base_price_last": float(pick_row.base_price_last),
-        "base_rank_last": int(pick_row.base_rank_last),
+        base_rep = _pick_representative(base_zone, base_complex, base_pyeong) if (base_complex and base_pyeong) else None
+        if base_rep:
+            st.markdown(f"- **기준단지(대표):** {_unit_brief(base_rep)}")
 
-        "cmp_zone": cmp_zone,
-        "cmp_complex": cmp_complex,
-        "cmp_dong": cmp_dong,
-        "cmp_ho": cmp_ho,
-        "cmp_price_2016": float(pick_row.cmp_price_2016),
-        "cmp_rank_2016": int(pick_row.cmp_rank_2016),
-        "cmp_price_last": float(pick_row.cmp_price_last),
-        "cmp_rank_last": int(pick_row.cmp_rank_last),
+        st.divider()
 
-        "diff_price_2016": float(pick_row.diff_price_2016),
-        "relative_rank_swing": float(pick_row.relative_rank_swing),
-    }
+        # =========================
+        # 2) 비교단지 1/2 선택
+        # =========================
+        def _default_other_zone(exclude: str) -> str:
+            for z in zones:
+                if z != exclude:
+                    return z
+            return exclude
 
-    st.divider()
-    st.caption(f"선택된 비교 후보 | 2016 가격 차이: {cmp['diff_price_2016']:.2f}억 | 상대 순위차 변화량: {cmp['relative_rank_swing']:.0f}")
+        d1, d2 = st.columns(2, gap="large")
 
-    sel_name = unit_str_floor_only(zone, complex_name, dong, ho)
-    cmp_name = unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)
-    render_compare_year_table_html(cmp, last_year, sel_name=sel_name, cmp_name=cmp_name)
-    sel_pyeong = get_pyeong_value(df_num, zone, complex_name, dong, ho)
-    cmp_pyeong = getattr(pick_row, "cmp_pyeong", pd.NA)
+        with d1:
+            st.markdown("**비교단지 1**")
+            z1 = st.selectbox("구역", zones, index=zones.index(_default_other_zone(base_zone)) if zones else 0, key="cmp3_z1")
+            cplx1_list = sorted(df_num[df_num["구역"] == z1]["단지명"].dropna().unique().tolist())
+            cplx1 = st.selectbox("단지명", cplx1_list, key="cmp3_c1") if cplx1_list else None
+            p1_list = _get_pyeong_options(z1, cplx1) if cplx1 else []
+            p1 = st.selectbox("평형", p1_list, key="cmp3_p1") if p1_list else None
+            rep1 = _pick_representative(z1, cplx1, p1) if (cplx1 and p1) else None
+            if rep1:
+                st.markdown(f"- 대표: {_unit_brief(rep1)}")
 
-    sel_leg = f"선택: {legend_unit_label(zone, sel_pyeong, dong, ho)}"
-    cmp_leg = f"비교: {legend_unit_label(cmp_zone, cmp_pyeong, cmp_dong, cmp_ho)}"
+        with d2:
+            st.markdown("**비교단지 2**")
+            z2 = st.selectbox("구역", zones, index=zones.index(_default_other_zone(z1)) if zones else 0, key="cmp3_z2")
+            cplx2_list = sorted(df_num[df_num["구역"] == z2]["단지명"].dropna().unique().tolist())
+            cplx2 = st.selectbox("단지명", cplx2_list, key="cmp3_c2") if cplx2_list else None
+            p2_list = _get_pyeong_options(z2, cplx2) if cplx2 else []
+            p2 = st.selectbox("평형", p2_list, key="cmp3_p2") if p2_list else None
+            rep2 = _pick_representative(z2, cplx2, p2) if (cplx2 and p2) else None
+            if rep2:
+                st.markdown(f"- 대표: {_unit_brief(rep2)}")
 
+        st.divider()
 
-    fig_move = plot_price_rank_arrow(
-        base_p0=cmp["base_price_2016"], base_r0=cmp["base_rank_2016"],
-        base_p1=cmp["base_price_last"], base_r1=cmp["base_rank_last"],
-        cmp_p0=cmp["cmp_price_2016"], cmp_r0=cmp["cmp_rank_2016"],
-        cmp_p1=cmp["cmp_price_last"], cmp_r1=cmp["cmp_rank_last"],
-        last_year=last_year,
-        sel_label=sel_leg,
-        cmp_label=cmp_leg,
-    )
-    st.pyplot(fig_move, use_container_width=True)
+        # =========================
+        # 3) 비교하기 버튼 → 화살표 그래프 출력
+        # =========================
+        can_compare = base_rep is not None and rep1 is not None and rep2 is not None
+        if st.button("비교하기", key="cmp3_do_compare", type="secondary", disabled=not can_compare):
+            def _draw_one(base_u: dict, cmp_u: dict, title: str):
+                if base_u["price_2016"] is None or base_u["price_last"] is None or base_u["rank_2016"] is None or base_u["rank_last"] is None:
+                    st.warning("기준단지에 2016/최신연도 데이터가 부족합니다.")
+                    return
+                if cmp_u["price_2016"] is None or cmp_u["price_last"] is None or cmp_u["rank_2016"] is None or cmp_u["rank_last"] is None:
+                    st.warning("비교단지에 2016/최신연도 데이터가 부족합니다.")
+                    return
+
+                # 요약 표(기존 렌더 함수 재사용)
+                cmp_payload = {
+                    "year2016": "2016",
+                    "last_year": last_year,
+                    "base_price_2016": float(base_u["price_2016"]),
+                    "base_rank_2016": int(base_u["rank_2016"]),
+                    "base_price_last": float(base_u["price_last"]),
+                    "base_rank_last": int(base_u["rank_last"]),
+                    "cmp_zone": cmp_u["zone"],
+                    "cmp_complex": cmp_u["complex"],
+                    "cmp_dong": int(cmp_u["dong"]),
+                    "cmp_ho": int(cmp_u["ho"]),
+                    "cmp_price_2016": float(cmp_u["price_2016"]),
+                    "cmp_rank_2016": int(cmp_u["rank_2016"]),
+                    "cmp_price_last": float(cmp_u["price_last"]),
+                    "cmp_rank_last": int(cmp_u["rank_last"]),
+                    "diff_price_2016": abs(float(cmp_u["price_2016"]) - float(base_u["price_2016"])),
+                    "relative_rank_swing": abs((int(base_u["rank_last"]) - int(cmp_u["rank_last"])) - (int(base_u["rank_2016"]) - int(cmp_u["rank_2016"]))),
+                }
+
+                st.subheader(title)
+                sel_name = unit_str_pyeong_floor_only(base_u["zone"], base_u["complex"], base_u["pyeong_raw"], base_u["dong"], base_u["ho"])
+                cmp_name = unit_str_pyeong_floor_only(cmp_u["zone"], cmp_u["complex"], cmp_u["pyeong_raw"], cmp_u["dong"], cmp_u["ho"])
+                render_compare_year_table_html(cmp_payload, last_year, sel_name=sel_name, cmp_name=cmp_name)
+
+                sel_leg = f"기준단지: {legend_unit_label(base_u['zone'], base_u['pyeong_raw'], base_u['dong'], base_u['ho'])}"
+                cmp_leg = f"비교단지: {legend_unit_label(cmp_u['zone'], cmp_u['pyeong_raw'], cmp_u['dong'], cmp_u['ho'])}"
+
+                fig_move = plot_price_rank_arrow(
+                    base_p0=float(base_u["price_2016"]), base_r0=float(base_u["rank_2016"]),
+                    base_p1=float(base_u["price_last"]), base_r1=float(base_u["rank_last"]),
+                    cmp_p0=float(cmp_u["price_2016"]), cmp_r0=float(cmp_u["rank_2016"]),
+                    cmp_p1=float(cmp_u["price_last"]), cmp_r1=float(cmp_u["rank_last"]),
+                    last_year=last_year,
+                    sel_label=sel_leg,
+                    cmp_label=cmp_leg,
+                )
+                st.pyplot(fig_move, use_container_width=True)
+
+            _draw_one(base_rep, rep1, f"기준단지 vs 비교단지 1 (2016 → {last_year})")
+            _draw_one(base_rep, rep2, f"기준단지 vs 비교단지 2 (2016 → {last_year})")
+        else:
+            if not can_compare:
+                st.caption("기준단지/비교단지 1/2의 구역·단지·평형을 모두 선택하면 [비교하기] 버튼이 활성화됩니다.")
