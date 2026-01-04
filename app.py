@@ -1916,7 +1916,7 @@ else:
                     x_min, x_max = min(all_years), max(all_years)
                     x_mid = (x_min + x_max) / 2.0
 
-                                        from matplotlib import patheffects as pe
+                    from matplotlib import patheffects as pe
 
                     def _pt_text(rank_v: float) -> str:
                         """순위 라벨 텍스트(연도는 x축에 있으므로 숫자만 표시)."""
