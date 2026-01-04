@@ -316,6 +316,35 @@ st.markdown(
         border-bottom: 1px solid rgba(49,51,63,.12);
         white-space: nowrap;
       }
+      
+      /* ===== Summary compare table ===== */
+      table.summary-table {
+        margin-left: auto !important;
+        margin-right: auto !important;
+        border-collapse: collapse;
+        width: 100%;
+      }
+      table.summary-table thead th {
+        text-align: center !important;
+        font-weight: 800;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(49,51,63,.20);
+        background: rgba(250,250,252,.90);
+      }
+      table.summary-table tbody th {
+        text-align: center !important;
+        font-weight: 700;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(49,51,63,.12);
+        background: rgba(250,250,252,.55);
+      }
+      table.summary-table tbody td {
+        text-align: center !important;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(49,51,63,.12);
+        white-space: nowrap;
+      }
+      
     </style>
     """,
     unsafe_allow_html=True,
@@ -353,6 +382,36 @@ def render_rank_table_html(df_in: pd.DataFrame) -> None:
 # Google Sheets Client (Secrets 기반)
 # =========================
 @st.cache_resource(show_spinner=False)
+
+def render_compare_year_table_html(cmp: dict, last_year: str, sel_name: str, cmp_name: str) -> None:
+    """선택/비교 대상의 2016 vs 최신연도(보통 2025) 가격/순위를 한눈에 보는 표로 표시."""
+    y0 = int(cmp.get('year2016', 2016))
+    y1 = int(last_year)
+
+    df = pd.DataFrame(
+        {
+            "선택 가격(억)": [cmp["base_price_2016"], cmp["base_price_last"]],
+            "선택 순위": [cmp["base_rank_2016"], cmp["base_rank_last"]],
+            "비교 가격(억)": [cmp["cmp_price_2016"], cmp["cmp_price_last"]],
+            "비교 순위": [cmp["cmp_rank_2016"], cmp["cmp_rank_last"]],
+        },
+        index=[y0, y1],
+    )
+    df.index.name = "연도"
+
+    disp = df.copy()
+    for c in ["선택 가격(억)", "비교 가격(억)"]:
+        disp[c] = disp[c].map(lambda x: f"{float(x):.2f}")
+    for c in ["선택 순위", "비교 순위"]:
+        disp[c] = disp[c].map(lambda x: f"{int(x):,}")
+
+    st.markdown(
+        f"<div style='text-align:center; font-weight:700; margin:4px 0 10px 0;'>"
+        f"선택: {sel_name} &nbsp;&nbsp;|&nbsp;&nbsp; 비교: {cmp_name}</div>",
+        unsafe_allow_html=True,
+    )
+    html = disp.to_html(classes="summary-table", escape=False)
+    st.markdown(html, unsafe_allow_html=True)
 def get_gspread_client():
     import gspread
     from google.oauth2.service_account import Credentials
@@ -1047,6 +1106,55 @@ if not year_cols:
 zones = sorted(df_num["구역"].dropna().unique().tolist())
 
 
+
+def plot_price_rank_arrow(
+    base_p0: float, base_r0: float, base_p1: float, base_r1: float,
+    cmp_p0: float, cmp_r0: float, cmp_p1: float, cmp_r1: float,
+    last_year: str,
+    sel_label: str, cmp_label: str,
+):
+    """2016→최신연도 이동을 '가격(x) - 순위(y)' 공간에서 화살표로 표현."""
+    fig, ax = plt.subplots(figsize=(7.0, 4.6), dpi=RANK_FIG_DPI)
+    ax.invert_yaxis()  # 위로 갈수록 상위(작은 순위)
+
+    ax.scatter(
+        [base_p0, base_p1], [base_r0, base_r1],
+        s=90, marker='o',
+        c=SEL_BAR_STYLE['face_color'],
+        edgecolors=SEL_BAR_STYLE['edge_color'],
+        linewidths=SEL_BAR_STYLE['linewidth'],
+        label=sel_label,
+    )
+    ax.annotate(
+        '', xy=(base_p1, base_r1), xytext=(base_p0, base_r0),
+        arrowprops=dict(arrowstyle='->', lw=2.2, color=SEL_BAR_STYLE['edge_color']),
+    )
+
+    ax.scatter(
+        [cmp_p0, cmp_p1], [cmp_r0, cmp_r1],
+        s=90, marker='s',
+        c=CMP_BAR_STYLE['face_color'],
+        edgecolors=CMP_BAR_STYLE['edge_color'],
+        linewidths=CMP_BAR_STYLE['linewidth'],
+        label=cmp_label,
+    )
+    ax.annotate(
+        '', xy=(cmp_p1, cmp_r1), xytext=(cmp_p0, cmp_r0),
+        arrowprops=dict(arrowstyle='->', lw=2.2, color=CMP_BAR_STYLE['edge_color']),
+    )
+
+    ax.text(base_p0, base_r0, ' 2016', va='center', fontsize=10, fontweight='bold')
+    ax.text(base_p1, base_r1, f' {last_year}', va='center', fontsize=10, fontweight='bold')
+    ax.text(cmp_p0, cmp_r0, ' 2016', va='center', fontsize=10, fontweight='bold')
+    ax.text(cmp_p1, cmp_r1, f' {last_year}', va='center', fontsize=10, fontweight='bold')
+
+    ax.set_title(f"가격-순위 이동(2016→{last_year})")
+    ax.set_xlabel("공시가격(억)")
+    ax.set_ylabel("압구정 전체 순위(위로 갈수록 상위)")
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc='best')
+    fig.tight_layout()
+    return fig
 def reset_after_zone():
     st.session_state["dong_pair"] = None
     st.session_state["ho"] = None
@@ -1309,14 +1417,25 @@ else:
         sel_prices_aligned = [sel_map[y] for y in common_years]
         cmp_prices_aligned = [cmp_map[y] for y in common_years]
 
-        st.caption(
-            f"2016 가격 차이: {cmp['diff_price_2016']:.2f}억 | "
-            f"상대 순위차 변화량: {cmp['relative_rank_swing']:.0f} | "
-            f"2016 전체순위(선택/비교): {cmp['base_rank_2016']:,} / {cmp['cmp_rank_2016']:,} | "
-            f"{last_year} 전체순위(선택/비교): {cmp['base_rank_last']:,} / {cmp['cmp_rank_last']:,} | "
-            f"순위변화(선택/비교): {cmp['base_rank_change_abs']:.0f} / {cmp['cmp_rank_change_abs']:.0f}"
+        # 한눈에 보이는 요약(지표는 최소화)
+        st.caption(f"2016 가격 차이: {cmp['diff_price_2016']:.2f}억 | 상대 순위차 변화량: {cmp['relative_rank_swing']:.0f}")
+
+        sel_name = unit_str_floor_only(zone, complex_name, dong, ho)
+        cmp_name = unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)
+        render_compare_year_table_html(cmp, last_year, sel_name=sel_name, cmp_name=cmp_name)
+
+        # 변화가 가장 직관적으로 보이는 그래프: 가격-순위 이동(2016→최신연도) 화살표
+        fig_move = plot_price_rank_arrow(
+            base_p0=cmp['base_price_2016'], base_r0=cmp['base_rank_2016'],
+            base_p1=cmp['base_price_last'], base_r1=cmp['base_rank_last'],
+            cmp_p0=cmp['cmp_price_2016'], cmp_r0=cmp['cmp_rank_2016'],
+            cmp_p1=cmp['cmp_price_last'], cmp_r1=cmp['cmp_rank_last'],
+            last_year=last_year,
+            sel_label=f"선택: {zone}",
+            cmp_label=f"비교: {cmp_zone}",
         )
-        st.caption(f"비교 물건: {unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)}")
+        st.pyplot(fig_move, use_container_width=True)
+
 
         fig3 = plot_price_compare_bars(
             years=common_years,
