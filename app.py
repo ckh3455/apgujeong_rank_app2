@@ -279,6 +279,27 @@ st.markdown(
       .stDataFrame .ag-cell { line-height: 22px !important; padding-top: 2px !important; padding-bottom: 2px !important; }
       .stDataFrame .ag-header-cell { padding-top: 2px !important; padding-bottom: 2px !important; }
 
+
+      /* ===== HTML rank table ===== */
+      table.rank-table {
+        margin-left: auto !important;
+        margin-right: auto !important;
+        border-collapse: collapse;
+        width: 100%;
+      }
+      table.rank-table thead th {
+        text-align: center !important;
+        font-weight: 700;
+        padding: 6px 8px;
+        border-bottom: 1px solid rgba(49,51,63,.20);
+        background: rgba(250,250,252,.90);
+      }
+      table.rank-table tbody td {
+        text-align: center !important;
+        padding: 6px 8px;
+        border-bottom: 1px solid rgba(49,51,63,.12);
+        white-space: nowrap;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -292,6 +313,24 @@ def tight_height(n_rows: int) -> int:
     per_row = 26
     padding = 10
     return header + per_row * max(n_rows, 1) + padding
+
+
+def render_rank_table_html(df_in: pd.DataFrame) -> None:
+    """랭킹 표를 HTML 테이블로 렌더링(가운데 정렬 + 불필요한 빈 행 제거)."""
+    df = df_in.copy()
+
+    if "연도" in df.columns:
+        df["연도"] = pd.to_numeric(df["연도"], errors="coerce").astype("Int64")
+
+    if "공시가격(억)" in df.columns:
+        s = pd.to_numeric(df["공시가격(억)"], errors="coerce")
+        df["공시가격(억)"] = s.map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
+    # 표 출력 단계에서 최종 방어(완전 빈 행 제거)
+    df = df.replace({"": pd.NA}).dropna(how="all").copy()
+
+    html = df.to_html(index=False, classes="rank-table", escape=False)
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # =========================
@@ -579,7 +618,9 @@ def compute_rank_tables(df_num: pd.DataFrame, year_cols: list[str], zone: str, c
         zr = zone_rank_series[key_mask_zone]
         ar = all_rank_series[key_mask_all]
 
-        price = pick_row[y]
+        price = pd.to_numeric(pick_row.get(y, pd.NA), errors="coerce")
+        if pd.isna(price):
+            continue  # 데이터 없는 연도는 행을 생성하지 않음
         zone_rank = zr.iloc[0] if (len(zr) and pd.notna(zr.iloc[0])) else pd.NA
         all_rank = ar.iloc[0] if (len(ar) and pd.notna(ar.iloc[0])) else pd.NA
 
@@ -639,6 +680,87 @@ def find_closest_by_2016(df_num: pd.DataFrame, base_zone: str, base_key: tuple, 
         "diff": float(best["diff"]),
     }
 
+
+
+def find_closest_by_2016_with_rank_inversion(
+    df_num: pd.DataFrame,
+    base_zone: str,
+    base_key: tuple,
+    year2016: str = "2016",
+    last_year: str = "2025",
+):
+    """
+    2016년 공시가격이 유사하면서,
+    "압구정 전체 랭킹" 기준으로 2016 ↔ last_year 사이에 상대 순위가 역전된 타구역 물건을 1개 선정합니다.
+    - base_zone과 다른 구역만 후보
+    - 역전 조건: (선택-후보) 랭킹차 부호가 2016과 last_year에서 바뀜(동순위=0은 제외)
+    """
+    if year2016 not in df_num.columns or last_year not in df_num.columns:
+        return None
+
+    sel_zone, sel_complex, sel_dong, sel_ho = base_key
+    base_row = df_num[
+        (df_num["구역"] == sel_zone)
+        & (df_num["단지명"] == sel_complex)
+        & (df_num["동"] == sel_dong)
+        & (df_num["호"] == sel_ho)
+    ]
+    if base_row.empty:
+        return None
+
+    base_idx = base_row.index[0]
+    base_p2016 = pd.to_numeric(base_row.iloc[0].get(year2016, pd.NA), errors="coerce")
+    base_plast = pd.to_numeric(base_row.iloc[0].get(last_year, pd.NA), errors="coerce")
+    if pd.isna(base_p2016) or pd.isna(base_plast):
+        return None
+
+    all_df = df_num.copy()
+    r2016 = all_df[year2016].rank(method="min", ascending=False)
+    rlast = all_df[last_year].rank(method="min", ascending=False)
+
+    base_r2016 = r2016.loc[base_idx]
+    base_rlast = rlast.loc[base_idx]
+    if pd.isna(base_r2016) or pd.isna(base_rlast):
+        return None
+
+    cand = all_df[all_df["구역"] != base_zone].copy()
+    cand["p2016"] = pd.to_numeric(cand.get(year2016), errors="coerce")
+    cand["plast"] = pd.to_numeric(cand.get(last_year), errors="coerce")
+    cand["r2016"] = r2016.loc[cand.index]
+    cand["rlast"] = rlast.loc[cand.index]
+    cand = cand.dropna(subset=["p2016", "plast", "r2016", "rlast"]).copy()
+    if cand.empty:
+        return None
+
+    diff_2016 = base_r2016 - cand["r2016"]
+    diff_last = base_rlast - cand["rlast"]
+    cand = cand[(diff_2016 != 0) & (diff_last != 0) & ((diff_2016 * diff_last) < 0)].copy()
+    if cand.empty:
+        return None
+
+    cand["diff_price_2016"] = (cand["p2016"] - base_p2016).abs()
+    best = cand.sort_values(["diff_price_2016", "구역", "단지명", "동", "호"]).iloc[0]
+
+    return {
+        "year2016": year2016,
+        "last_year": last_year,
+
+        "base_price_2016": float(base_p2016),
+        "base_rank_2016": int(base_r2016),
+        "base_price_last": float(base_plast),
+        "base_rank_last": int(base_rlast),
+
+        "cmp_zone": str(best["구역"]),
+        "cmp_complex": str(best["단지명"]),
+        "cmp_dong": int(best["동"]),
+        "cmp_ho": int(best["호"]),
+        "cmp_price_2016": float(best["p2016"]),
+        "cmp_rank_2016": int(best["r2016"]),
+        "cmp_price_last": float(best["plast"]),
+        "cmp_rank_last": int(best["rlast"]),
+
+        "diff_price_2016": float(best["diff_price_2016"]),
+    }
 
 def build_price_series(df_num: pd.DataFrame, year_cols: list[str], zone: str, complex_name: str, dong: int, ho: int):
     row = df_num[
@@ -775,6 +897,40 @@ def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: li
     ax.legend(loc="best")
     fig.tight_layout()
     return fig
+
+def plot_price_compare_bars(
+    years: list[int],
+    sel_prices: list[float],
+    cmp_prices: list[float],
+    sel_label: str,
+    cmp_label: str,
+    title: str,
+):
+    import numpy as np
+
+    fig, ax = plt.subplots(figsize=(7.0, RANK_FIG_HEIGHT_IN), dpi=RANK_FIG_DPI)
+
+    x = np.arange(len(years))
+    width = 0.38
+
+    ax.bar(x - width / 2, sel_prices, width, label=sel_label, color=SEL_PRICE_STYLE["line_color"])
+    ax.bar(x + width / 2, cmp_prices, width, label=cmp_label, color=CMP_PRICE_STYLE["line_color"])
+
+    ax.set_title(title)
+    ax.set_xlabel("연도")
+    ax.set_ylabel("공시가격(억)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(y) for y in years], rotation=0)
+
+    # 마지막 연도만 값 라벨(과밀 방지)
+    ax.annotate(f"{sel_prices[-1]:.2f}", (x[-1] - width / 2, sel_prices[-1]), textcoords="offset points", xytext=(0, 6), ha="center", fontweight="bold")
+    ax.annotate(f"{cmp_prices[-1]:.2f}", (x[-1] + width / 2, cmp_prices[-1]), textcoords="offset points", xytext=(0, 6), ha="center", fontweight="bold")
+
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    return fig
+
 
 
 # =========================
@@ -1002,17 +1158,7 @@ st.subheader("랭킹변화")
 l1, r1 = st.columns(2, gap="large")
 with l1:
     st.markdown("**구역 내 연도별 랭킹**")
-    st.dataframe(
-        zone_table,
-        use_container_width=True,
-        hide_index=True,
-        height=RANK_PANEL_HEIGHT_PX,
-        column_config={
-            "연도": st.column_config.NumberColumn(format="%d", width="small"),
-            "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
-            "구역 내 랭킹": st.column_config.TextColumn(width="small"),
-        },
-    )
+    render_rank_table_html(zone_table)
 
 with r1:
     st.markdown("**구역 내 순위 변화(연도별)**")
@@ -1031,17 +1177,7 @@ with r1:
 l2, r2 = st.columns(2, gap="large")
 with l2:
     st.markdown("**압구정 전체 연도별 랭킹**")
-    st.dataframe(
-        all_table,
-        use_container_width=True,
-        hide_index=True,
-        height=RANK_PANEL_HEIGHT_PX,
-        column_config={
-            "연도": st.column_config.NumberColumn(format="%d", width="small"),
-            "공시가격(억)": st.column_config.NumberColumn(format="%.2f", width="small"),
-            "압구정 전체 랭킹": st.column_config.TextColumn(width="small"),
-        },
-    )
+    render_rank_table_html(all_table)
 
 with r2:
     st.markdown("**압구정 전체 순위 변화(연도별)**")
@@ -1058,17 +1194,19 @@ with r2:
 
 st.divider()
 
-st.markdown("**3) 2016년 유사 가격 타구역 비교(가격 추이)**")
+st.markdown("**3) 2016년 유사 + 순위 역전 타구역 비교(연도별 막대)**")
 
-cmp = find_closest_by_2016(
+last_year = str(max(int(y) for y in year_cols))
+cmp = find_closest_by_2016_with_rank_inversion(
     df_num=df_num,
     base_zone=zone,
     base_key=(zone, complex_name, dong, ho),
     year2016="2016",
+    last_year=last_year,
 )
 
 if cmp is None:
-    st.info("2016년 가격이 없거나, 비교할 타구역(2016 값 존재) 데이터가 없어 세 번째 그래프를 그릴 수 없습니다.")
+    st.info("조건(2016 유사 + 순위 역전)을 만족하는 타구역 물건을 찾지 못했습니다. (또는 2016/최신연도 데이터가 부족합니다.)")
 else:
     cmp_zone = cmp["cmp_zone"]
     cmp_complex = cmp["cmp_complex"]
@@ -1089,17 +1227,18 @@ else:
         cmp_prices_aligned = [cmp_map[y] for y in common_years]
 
         st.caption(
-            f"선택(2016): {cmp['base_price']:.2f}억  |  "
-            f"유사타구역(2016): {cmp['cmp_price']:.2f}억  |  "
-            f"차이: {cmp['diff']:.2f}억"
+            f"2016 가격 차이: {cmp['diff_price_2016']:.2f}억 | "
+            f"2016 전체순위(선택/비교): {cmp['base_rank_2016']:,} / {cmp['cmp_rank_2016']:,} | "
+            f"{last_year} 전체순위(선택/비교): {cmp['base_rank_last']:,} / {cmp['cmp_rank_last']:,}"
         )
-        st.caption(f"유사타구역 물건: {unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)}")
+        st.caption(f"비교 물건: {unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)}")
 
-        fig3 = plot_price_compare(
+        fig3 = plot_price_compare_bars(
             years=common_years,
             sel_prices=sel_prices_aligned,
             cmp_prices=cmp_prices_aligned,
             sel_label=f"선택: {zone}",
-            cmp_label=f"유사타구역: {cmp_zone}",
+            cmp_label=f"비교: {cmp_zone}",
+            title=f"2016 유사 + 순위 역전 타구역 비교 (막대) / 기준연도: 2016, 비교연도: {last_year}",
         )
         st.pyplot(fig3, use_container_width=True)
