@@ -768,28 +768,24 @@ def find_closest_by_2016(df_num: pd.DataFrame, base_zone: str, base_key: tuple, 
 
 
 
-def find_closest_by_2016_with_rank_inversion(
+def find_candidates_by_2016_with_rank_inversion(
     df_num: pd.DataFrame,
     base_zone: str,
     base_key: tuple,
     year2016: str = "2016",
     last_year: str = "2025",
-    top_n_closest: int = 80,
-):
-    """
-    2016년 공시가격이 유사하면서,
-    "압구정 전체 랭킹" 기준으로 2016 ↔ last_year 사이에 상대 순위가 역전된 타구역 물건을 1개 선정합니다.
+) -> pd.DataFrame:
+    """(타구역) 2016 유사 + 순위 역전 후보들을 계산하여 DataFrame으로 반환합니다.
 
-    선정 로직(요청 반영):
-      1) base_zone과 다른 구역만 후보
-      2) 역전 조건: (선택-후보) 랭킹차 부호가 2016과 last_year에서 바뀜(동순위=0은 제외)
-      3) 2016 가격이 가장 유사한 후보들(top_n_closest) 중에서
-         상대적으로 "많이" 하락/상승한(= 상대 순위차 변화량이 큰) 후보를 우선 선정
-
-    반환값: 선택/비교 물건의 2016/last_year 가격 및 랭킹, 2016 가격차, 상대 순위차 변화량 등
+    반환 DataFrame 컬럼(주요):
+      - cmp_zone, cmp_complex, cmp_dong, cmp_ho
+      - diff_price_2016 (2016 가격 차이, 절대값)
+      - relative_rank_swing (상대 순위차 변화량: |(base-cand)_last - (base-cand)_2016|)
+      - cmp_price_2016, cmp_rank_2016, cmp_price_last, cmp_rank_last
+      - base_price_2016, base_rank_2016, base_price_last, base_rank_last
     """
     if year2016 not in df_num.columns or last_year not in df_num.columns:
-        return None
+        return pd.DataFrame()
 
     sel_zone, sel_complex, sel_dong, sel_ho = base_key
     base_row = df_num[
@@ -799,13 +795,13 @@ def find_closest_by_2016_with_rank_inversion(
         & (df_num["호"] == sel_ho)
     ]
     if base_row.empty:
-        return None
+        return pd.DataFrame()
 
     base_idx = base_row.index[0]
     base_p2016 = pd.to_numeric(base_row.iloc[0].get(year2016, pd.NA), errors="coerce")
     base_plast = pd.to_numeric(base_row.iloc[0].get(last_year, pd.NA), errors="coerce")
     if pd.isna(base_p2016) or pd.isna(base_plast):
-        return None
+        return pd.DataFrame()
 
     all_df = df_num.copy()
     r2016 = all_df[year2016].rank(method="min", ascending=False)
@@ -814,9 +810,8 @@ def find_closest_by_2016_with_rank_inversion(
     base_r2016 = r2016.loc[base_idx]
     base_rlast = rlast.loc[base_idx]
     if pd.isna(base_r2016) or pd.isna(base_rlast):
-        return None
+        return pd.DataFrame()
 
-    # 후보(타구역)
     cand = all_df[all_df["구역"] != base_zone].copy()
     cand["p2016"] = pd.to_numeric(cand.get(year2016), errors="coerce")
     cand["plast"] = pd.to_numeric(cand.get(last_year), errors="coerce")
@@ -824,57 +819,104 @@ def find_closest_by_2016_with_rank_inversion(
     cand["rlast"] = rlast.loc[cand.index]
     cand = cand.dropna(subset=["p2016", "plast", "r2016", "rlast"]).copy()
     if cand.empty:
-        return None
+        return pd.DataFrame()
 
-    # 역전 조건(선택-후보 랭킹차의 부호가 바뀜)
     diff_2016 = base_r2016 - cand["r2016"]
     diff_last = base_rlast - cand["rlast"]
+
+    # 순위 역전: 2016과 last_year 사이에 (선택-후보) 상대 순위차의 부호가 뒤집힘
     cand = cand[(diff_2016 != 0) & (diff_last != 0) & ((diff_2016 * diff_last) < 0)].copy()
+    if cand.empty:
+        return pd.DataFrame()
+
+    cand["diff_price_2016"] = (cand["p2016"] - base_p2016).abs()
+    cand["cand_rank_change_abs"] = (cand["rlast"] - cand["r2016"]).abs()
+    cand["relative_rank_swing"] = (diff_last - diff_2016).abs()
+
+    cand_out = pd.DataFrame(
+        {
+            "year2016": year2016,
+            "last_year": last_year,
+            "base_price_2016": float(base_p2016),
+            "base_rank_2016": float(base_r2016),
+            "base_price_last": float(base_plast),
+            "base_rank_last": float(base_rlast),
+            "base_rank_change_abs": float(abs(base_rlast - base_r2016)),
+            "cmp_zone": cand["구역"].astype(str),
+            "cmp_complex": cand["단지명"].astype(str),
+            "cmp_dong": cand["동"].astype(int),
+            "cmp_ho": cand["호"].astype(int),
+            "cmp_price_2016": cand["p2016"].astype(float),
+            "cmp_rank_2016": cand["r2016"].astype(float),
+            "cmp_price_last": cand["plast"].astype(float),
+            "cmp_rank_last": cand["rlast"].astype(float),
+            "diff_price_2016": cand["diff_price_2016"].astype(float),
+            "cand_rank_change_abs": cand["cand_rank_change_abs"].astype(float),
+            "relative_rank_swing": cand["relative_rank_swing"].astype(float),
+        }
+    )
+
+    # 정렬: 2016 유사(가까움) 우선 + 같은 유사도에서는 상대변동 큰 후보를 위로
+    cand_out = cand_out.sort_values(
+        ["diff_price_2016", "relative_rank_swing", "cand_rank_change_abs", "cmp_zone", "cmp_complex", "cmp_dong", "cmp_ho"],
+        ascending=[True, False, False, True, True, True, True],
+    ).reset_index(drop=True)
+
+    return cand_out
+
+
+def find_closest_by_2016_with_rank_inversion(
+    df_num: pd.DataFrame,
+    base_zone: str,
+    base_key: tuple,
+    year2016: str = "2016",
+    last_year: str = "2025",
+    top_n_closest: int = 80,
+):
+    """2016 유사 + 순위 역전 후보 중 '상대변동 최대' 1개를 선택해 dict로 반환합니다.
+
+    선택 규칙:
+      1) 역전 후보 전체를 계산
+      2) 2016 가격이 가까운 상위 top_n_closest 후보로 제한
+      3) 그 안에서 relative_rank_swing(상대 순위차 변화량) 최대를 선택
+    """
+    cand = find_candidates_by_2016_with_rank_inversion(
+        df_num=df_num,
+        base_zone=base_zone,
+        base_key=base_key,
+        year2016=year2016,
+        last_year=last_year,
+    )
     if cand.empty:
         return None
 
-    # 2016 가격 유사도
-    cand["diff_price_2016"] = (cand["p2016"] - base_p2016).abs()
-
-    # "상대적으로 많이" 하락/상승: 상대 순위차 변화량(|(선택-후보)랭킹차|의 변화가 아니라, (선택-후보)랭킹차 자체의 변화량)
-    # = |(base_rlast - cand_rlast) - (base_r2016 - cand_r2016)| = |diff_last - diff_2016|
-    cand["relative_rank_swing"] = (diff_last - diff_2016).abs()
-
-    # 후보 자체의 순위 변화량(참고용)
-    cand["cand_rank_change_abs"] = (cand["rlast"] - cand["r2016"]).abs()
-
-    # 2016 가격이 가까운 후보군 중에서, 상대 순위차 변화량이 큰 것을 우선 선택
     top_n = max(1, int(top_n_closest))
-    cand_top = cand.nsmallest(top_n, "diff_price_2016") if len(cand) > top_n else cand
-    best = cand_top.sort_values([
-        "relative_rank_swing",
-        "cand_rank_change_abs",
-        "diff_price_2016",
-        "구역",
-        "단지명",
-        "동",
-        "호",
-    ], ascending=[False, False, True, True, True, True, True]).iloc[0]
+    cand_top = cand.head(top_n) if len(cand) > top_n else cand
+
+    best = cand_top.sort_values(
+        ["relative_rank_swing", "cand_rank_change_abs", "diff_price_2016"],
+        ascending=[False, False, True],
+    ).iloc[0]
 
     return {
-        "year2016": year2016,
-        "last_year": last_year,
+        "year2016": best["year2016"],
+        "last_year": best["last_year"],
 
-        "base_price_2016": float(base_p2016),
-        "base_rank_2016": int(base_r2016),
-        "base_price_last": float(base_plast),
-        "base_rank_last": int(base_rlast),
-        "base_rank_change_abs": float(abs(base_rlast - base_r2016)),
+        "base_price_2016": float(best["base_price_2016"]),
+        "base_rank_2016": int(best["base_rank_2016"]),
+        "base_price_last": float(best["base_price_last"]),
+        "base_rank_last": int(best["base_rank_last"]),
+        "base_rank_change_abs": float(best["base_rank_change_abs"]),
 
-        "cmp_zone": str(best["구역"]),
-        "cmp_complex": str(best["단지명"]),
-        "cmp_dong": int(best["동"]),
-        "cmp_ho": int(best["호"]),
-        "cmp_price_2016": float(best["p2016"]),
-        "cmp_rank_2016": int(best["r2016"]),
-        "cmp_price_last": float(best["plast"]),
-        "cmp_rank_last": int(best["rlast"]),
-        "cmp_rank_change_abs": float(best["cand_rank_change_abs"]),
+        "cmp_zone": str(best["cmp_zone"]),
+        "cmp_complex": str(best["cmp_complex"]),
+        "cmp_dong": int(best["cmp_dong"]),
+        "cmp_ho": int(best["cmp_ho"]),
+        "cmp_price_2016": float(best["cmp_price_2016"]),
+        "cmp_rank_2016": int(best["cmp_rank_2016"]),
+        "cmp_price_last": float(best["cmp_price_last"]),
+        "cmp_rank_last": int(best["cmp_rank_last"]),
+        "cand_rank_change_abs": float(best["cand_rank_change_abs"]),
 
         "diff_price_2016": float(best["diff_price_2016"]),
         "relative_rank_swing": float(best["relative_rank_swing"]),
@@ -1124,80 +1166,117 @@ def plot_price_rank_arrow(
     last_year: str,
     sel_label: str, cmp_label: str,
 ):
-    """2016→최신연도 이동을 '가격(x) - 순위(y)' 공간에서 화살표로 표현."""
-    fig, ax = plt.subplots(figsize=(7.0, 4.6), dpi=RANK_FIG_DPI)
+    """2016→최신연도 이동을 '가격(x) - 순위(y)' 공간에서 화살표로 표현.
+
+    라벨(연도/가격/순위) 박스가 겹치는 경우가 자주 발생하므로,
+    - 2016 라벨끼리, 2025 라벨끼리 각각 근접하면 서로 다른 오프셋을 자동 부여하여 겹침을 최소화합니다.
+    """
+    fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=RANK_FIG_DPI)
     ax.invert_yaxis()  # 위로 갈수록 상위(작은 순위)
-
-    ax.scatter(
-        [base_p0, base_p1], [base_r0, base_r1],
-        s=90, marker='o',
-        c=SEL_BAR_STYLE['face_color'],
-        edgecolors=SEL_BAR_STYLE['edge_color'],
-        linewidths=SEL_BAR_STYLE['linewidth'],
-        label=sel_label,
-    )
-    ax.annotate(
-        '', xy=(base_p1, base_r1), xytext=(base_p0, base_r0),
-        arrowprops=dict(arrowstyle='->', lw=2.2, color=SEL_BAR_STYLE['edge_color']),
-    )
-
-    ax.scatter(
-        [cmp_p0, cmp_p1], [cmp_r0, cmp_r1],
-        s=90, marker='s',
-        c=CMP_BAR_STYLE['face_color'],
-        edgecolors=CMP_BAR_STYLE['edge_color'],
-        linewidths=CMP_BAR_STYLE['linewidth'],
-        label=cmp_label,
-    )
-    ax.annotate(
-        '', xy=(cmp_p1, cmp_r1), xytext=(cmp_p0, cmp_r0),
-        arrowprops=dict(arrowstyle='->', lw=2.2, color=CMP_BAR_STYLE['edge_color']),
-    )
 
     def _pt_label(year: str, price: float, rank: float) -> str:
         return f"{year}\n{price:.2f}억\n{int(rank):,}위"
 
-    # 각 점에 '연도 / 가격 / 순위'를 표시 (요청: 2016 7.99억 9,113위 형태)
+    def _separate_offsets(p_a, r_a, p_b, r_b, default_a, default_b):
+        """두 점이 근접하면 라벨 오프셋을 다르게 주어 겹침을 피한다(포인트 단위)."""
+        close = (abs(p_a - p_b) < 2.0) and (abs(r_a - r_b) < 250.0)
+        if not close:
+            return default_a, default_b
+
+        # 더 상위(작은 순위)인 쪽 라벨을 위로, 다른 쪽은 아래로 크게 분리
+        if r_a <= r_b:
+            return (12, -66), (12, 18)
+        else:
+            return (12, 18), (12, -66)
+
+    # 기본 오프셋(겹치지 않으면 그대로 사용)
+    base0_off, cmp0_off = _separate_offsets(
+        base_p0, base_r0, cmp_p0, cmp_r0,
+        default_a=(12, -18),
+        default_b=(12, 18),
+    )
+    base1_off, cmp1_off = _separate_offsets(
+        base_p1, base_r1, cmp_p1, cmp_r1,
+        default_a=(12, -18),
+        default_b=(12, 18),
+    )
+
+    # 점/화살표(선택)
+    ax.scatter(
+        [base_p0, base_p1], [base_r0, base_r1],
+        s=110, marker='o',
+        c=SEL_BAR_STYLE['face_color'],
+        edgecolors=SEL_BAR_STYLE['edge_color'],
+        linewidths=SEL_BAR_STYLE['linewidth'],
+        zorder=3,
+        label=sel_label,
+    )
+    ax.annotate(
+        '', xy=(base_p1, base_r1), xytext=(base_p0, base_r0),
+        arrowprops=dict(arrowstyle='->', lw=2.6, color=SEL_BAR_STYLE['edge_color']),
+        zorder=2,
+    )
+
+    # 점/화살표(비교)
+    ax.scatter(
+        [cmp_p0, cmp_p1], [cmp_r0, cmp_r1],
+        s=110, marker='s',
+        c=CMP_BAR_STYLE['face_color'],
+        edgecolors=CMP_BAR_STYLE['edge_color'],
+        linewidths=CMP_BAR_STYLE['linewidth'],
+        zorder=3,
+        label=cmp_label,
+    )
+    ax.annotate(
+        '', xy=(cmp_p1, cmp_r1), xytext=(cmp_p0, cmp_r0),
+        arrowprops=dict(arrowstyle='->', lw=2.6, color=CMP_BAR_STYLE['edge_color']),
+        zorder=2,
+    )
+
+    # 라벨(연도/가격/순위) - 겹침 최소화 오프셋 적용
     ax.annotate(
         _pt_label("2016", base_p0, base_r0),
         xy=(base_p0, base_r0),
-        xytext=(10, -10),
+        xytext=base0_off,
         textcoords="offset points",
         fontsize=10,
         fontweight="bold",
         color=SEL_BAR_STYLE["edge_color"],
-        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.75),
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
+        zorder=4,
     )
     ax.annotate(
         _pt_label(str(last_year), base_p1, base_r1),
         xy=(base_p1, base_r1),
-        xytext=(10, -10),
+        xytext=base1_off,
         textcoords="offset points",
         fontsize=10,
         fontweight="bold",
         color=SEL_BAR_STYLE["edge_color"],
-        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.75),
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
+        zorder=4,
     )
-
     ax.annotate(
         _pt_label("2016", cmp_p0, cmp_r0),
         xy=(cmp_p0, cmp_r0),
-        xytext=(10, 12),
+        xytext=cmp0_off,
         textcoords="offset points",
         fontsize=10,
         fontweight="bold",
         color=CMP_BAR_STYLE["edge_color"],
-        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.75),
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
+        zorder=4,
     )
     ax.annotate(
         _pt_label(str(last_year), cmp_p1, cmp_r1),
         xy=(cmp_p1, cmp_r1),
-        xytext=(10, 12),
+        xytext=cmp1_off,
         textcoords="offset points",
         fontsize=10,
         fontweight="bold",
         color=CMP_BAR_STYLE["edge_color"],
-        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.75),
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
+        zorder=4,
     )
 
     ax.set_title(f"가격-순위 이동(2016→{last_year})")
@@ -1211,17 +1290,20 @@ def reset_after_zone():
     st.session_state["dong_pair"] = None
     st.session_state["ho"] = None
     st.session_state["confirmed"] = False
+    st.session_state["cmp_pick_key"] = None
 
 
 def reset_after_dong():
     st.session_state["ho"] = None
     st.session_state["confirmed"] = False
+    st.session_state["cmp_pick_key"] = None
 
 
 st.session_state.setdefault("zone", None)
 st.session_state.setdefault("dong_pair", None)
 st.session_state.setdefault("ho", None)
 st.session_state.setdefault("confirmed", False)
+st.session_state.setdefault("cmp_pick_key", None)
 
 zone = st.selectbox("구역 선택", zones, index=None, placeholder="구역을 선택하세요",
                     key="zone", on_change=reset_after_zone)
@@ -1437,10 +1519,11 @@ with r2:
 
 st.divider()
 
-st.markdown("**3) 2016년 유사 + 순위 역전(상대변동 최대) 타구역 비교(연도별 막대)**")
+st.markdown("**3) 2016년 유사 + 순위 역전(상대변동 최대) 타구역 후보 5개 (행별 비교 버튼)**")
 
 last_year = str(max(int(y) for y in year_cols))
-cmp = find_closest_by_2016_with_rank_inversion(
+
+cand_all = find_candidates_by_2016_with_rank_inversion(
     df_num=df_num,
     base_zone=zone,
     base_key=(zone, complex_name, dong, ho),
@@ -1448,53 +1531,96 @@ cmp = find_closest_by_2016_with_rank_inversion(
     last_year=last_year,
 )
 
-if cmp is None:
-    st.info("조건(2016 유사 + 순위 역전)을 만족하는 타구역 물건을 찾지 못했습니다. (또는 2016/최신연도 데이터가 부족합니다.)")
+if cand_all.empty:
+    st.info("조건(2016 유사 + 순위 역전)을 만족하는 타구역 후보를 찾지 못했습니다. (또는 2016/최신연도 데이터가 부족합니다.)")
 else:
-    cmp_zone = cmp["cmp_zone"]
-    cmp_complex = cmp["cmp_complex"]
-    cmp_dong = cmp["cmp_dong"]
-    cmp_ho = cmp["cmp_ho"]
+    cand5 = cand_all.sort_values(["diff_price_2016", "relative_rank_swing"], ascending=[True, False]).head(5).reset_index(drop=True)
 
-    sel_years, sel_prices = build_price_series(df_num, year_cols, zone, complex_name, dong, ho)
-    cmp_years, cmp_prices = build_price_series(df_num, year_cols, cmp_zone, cmp_complex, cmp_dong, cmp_ho)
+    # 후보 키 목록
+    cand5_keys = [
+        f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
+        for r in cand5.itertuples(index=False)
+    ]
 
-    sel_map = dict(zip(sel_years, sel_prices))
-    cmp_map = dict(zip(cmp_years, cmp_prices))
-    common_years = sorted(set(sel_map.keys()) & set(cmp_map.keys()))
+    # 기본 선택(현재 선택이 유효하지 않으면, 5개 중 상대변동이 가장 큰 후보를 기본으로 선택)
+    if st.session_state.get("cmp_pick_key") not in cand5_keys:
+        best_pos = int(cand5["relative_rank_swing"].astype(float).values.argmax())
+        st.session_state["cmp_pick_key"] = cand5_keys[best_pos]
 
-    if not common_years:
-        st.info("선택/비교 물건의 공통 연도 데이터가 없어 비교 그래프를 그릴 수 없습니다.")
-    else:
-        sel_prices_aligned = [sel_map[y] for y in common_years]
-        cmp_prices_aligned = [cmp_map[y] for y in common_years]
+    st.caption("아래 5개 후보는 '2016 가격이 가장 유사한' 순서로 정렬되어 있습니다. 우측의 [비교] 버튼으로 즉시 전환할 수 있습니다.")
 
-        # 한눈에 보이는 요약(지표는 최소화)
-        st.caption(f"2016 가격 차이: {cmp['diff_price_2016']:.2f}억 | 상대 순위차 변화량: {cmp['relative_rank_swing']:.0f}")
+    for i, r in enumerate(cand5.itertuples(index=False), start=1):
+        row_key = f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
+        left, right = st.columns([0.82, 0.18])
 
-        sel_name = unit_str_floor_only(zone, complex_name, dong, ho)
-        cmp_name = unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)
-        render_compare_year_table_html(cmp, last_year, sel_name=sel_name, cmp_name=cmp_name)
+        with left:
+            unit = unit_str_floor_only(r.cmp_zone, r.cmp_complex, int(r.cmp_dong), int(r.cmp_ho))
+            st.markdown(
+                f"**{i}. {unit}**  \n"
+                f"- 2016 가격차: **{float(r.diff_price_2016):.2f}억** | 상대 순위차 변화량: **{float(r.relative_rank_swing):.0f}**  \n"
+                f"- 2016(가격/순위): {float(r.cmp_price_2016):.2f}억 / {int(r.cmp_rank_2016):,}위 → "
+                f"{last_year}(가격/순위): {float(r.cmp_price_last):.2f}억 / {int(r.cmp_rank_last):,}위"
+            )
 
-        # 변화가 가장 직관적으로 보이는 그래프: 가격-순위 이동(2016→최신연도) 화살표
-        fig_move = plot_price_rank_arrow(
-            base_p0=cmp['base_price_2016'], base_r0=cmp['base_rank_2016'],
-            base_p1=cmp['base_price_last'], base_r1=cmp['base_rank_last'],
-            cmp_p0=cmp['cmp_price_2016'], cmp_r0=cmp['cmp_rank_2016'],
-            cmp_p1=cmp['cmp_price_last'], cmp_r1=cmp['cmp_rank_last'],
-            last_year=last_year,
-            sel_label=f"선택: {zone}",
-            cmp_label=f"비교: {cmp_zone}",
-        )
-        st.pyplot(fig_move, use_container_width=True)
+        with right:
+            is_current = (st.session_state.get("cmp_pick_key") == row_key)
+            btn_label = "선택됨" if is_current else "비교"
+            if st.button(btn_label, key=f"cmp_btn_{i}_{row_key}"):
+                st.session_state["cmp_pick_key"] = row_key
 
+    # 선택된 후보로 비교 출력
+    pick_key = st.session_state.get("cmp_pick_key")
+    pick_row = None
+    for r in cand5.itertuples(index=False):
+        row_key = f"{r.cmp_zone}|{r.cmp_complex}|{int(r.cmp_dong)}|{int(r.cmp_ho)}"
+        if row_key == pick_key:
+            pick_row = r
+            break
 
-        fig3 = plot_price_compare_bars(
-            years=common_years,
-            sel_prices=sel_prices_aligned,
-            cmp_prices=cmp_prices_aligned,
-            sel_label=f"선택: {zone}",
-            cmp_label=f"비교: {cmp_zone}",
-            title=f"2016 유사 + 순위 역전(상대변동 최대) 타구역 비교 (막대) / 기준연도: 2016, 비교연도: {last_year}",
-        )
-        st.pyplot(fig3, use_container_width=True)
+    if pick_row is None:
+        pick_row = cand5.iloc[0]
+
+    cmp_zone = str(pick_row.cmp_zone)
+    cmp_complex = str(pick_row.cmp_complex)
+    cmp_dong = int(pick_row.cmp_dong)
+    cmp_ho = int(pick_row.cmp_ho)
+
+    cmp = {
+        "year2016": "2016",
+        "last_year": last_year,
+
+        "base_price_2016": float(pick_row.base_price_2016),
+        "base_rank_2016": int(pick_row.base_rank_2016),
+        "base_price_last": float(pick_row.base_price_last),
+        "base_rank_last": int(pick_row.base_rank_last),
+
+        "cmp_zone": cmp_zone,
+        "cmp_complex": cmp_complex,
+        "cmp_dong": cmp_dong,
+        "cmp_ho": cmp_ho,
+        "cmp_price_2016": float(pick_row.cmp_price_2016),
+        "cmp_rank_2016": int(pick_row.cmp_rank_2016),
+        "cmp_price_last": float(pick_row.cmp_price_last),
+        "cmp_rank_last": int(pick_row.cmp_rank_last),
+
+        "diff_price_2016": float(pick_row.diff_price_2016),
+        "relative_rank_swing": float(pick_row.relative_rank_swing),
+    }
+
+    st.divider()
+    st.caption(f"선택된 비교 후보 | 2016 가격 차이: {cmp['diff_price_2016']:.2f}억 | 상대 순위차 변화량: {cmp['relative_rank_swing']:.0f}")
+
+    sel_name = unit_str_floor_only(zone, complex_name, dong, ho)
+    cmp_name = unit_str_floor_only(cmp_zone, cmp_complex, cmp_dong, cmp_ho)
+    render_compare_year_table_html(cmp, last_year, sel_name=sel_name, cmp_name=cmp_name)
+
+    fig_move = plot_price_rank_arrow(
+        base_p0=cmp["base_price_2016"], base_r0=cmp["base_rank_2016"],
+        base_p1=cmp["base_price_last"], base_r1=cmp["base_rank_last"],
+        cmp_p0=cmp["cmp_price_2016"], cmp_r0=cmp["cmp_rank_2016"],
+        cmp_p1=cmp["cmp_price_last"], cmp_r1=cmp["cmp_rank_last"],
+        last_year=last_year,
+        sel_label=f"선택: {zone}",
+        cmp_label=f"비교: {cmp_zone}",
+    )
+    st.pyplot(fig_move, use_container_width=True)
