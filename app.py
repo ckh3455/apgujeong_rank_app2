@@ -202,7 +202,7 @@ CMP_BAR_STYLE = {
 SHOW_RANK_LABELS = True
 RANK_LABEL_FONTSIZE = 9
 RANK_LABEL_Y_OFFSET = -22  # (음수일수록 위로 더 올라감)
-RANK_LABEL_normal = True
+RANK_LABEL_BOLD = True
 
 # 표/그래프 높이(좌우 패널 맞춤)
 RANK_PANEL_HEIGHT_PX = 560   # 좌측 표, 우측 그래프를 동일 높이로 맞춤
@@ -1062,7 +1062,7 @@ def plot_rank_line(years: list[int], ranks: list[int], title: str, style: dict):
                 ha="center",
                 va="bottom",
                 fontsize=RANK_LABEL_FONTSIZE,
-                fontweight="normal",
+                fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.9),
             )
 
@@ -1124,7 +1124,7 @@ def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: li
         ha="center",
         va="bottom" if sel_off[1] >= 0 else "top",
         fontsize=11,
-        fontweight="normal",
+        fontweight="bold",
         bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.9),
     )
     ax.annotate(
@@ -1135,7 +1135,7 @@ def plot_price_compare(years: list[int], sel_prices: list[float], cmp_prices: li
         ha="center",
         va="bottom" if cmp_off[1] >= 0 else "top",
         fontsize=11,
-        fontweight="normal",
+        fontweight="bold",
         bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.9),
     )
 
@@ -1170,7 +1170,7 @@ def plot_price_compare_bars(
     width = 0.40
 
     b1 = ax.bar(
-        x - width / 1,
+        x - width / 2,
         sel_prices,
         width,
         label=sel_label,
@@ -1182,7 +1182,7 @@ def plot_price_compare_bars(
         zorder=3,
     )
     b2 = ax.bar(
-        x + width / 1,
+        x + width / 2,
         cmp_prices,
         width,
         label=cmp_label,
@@ -1213,7 +1213,7 @@ def plot_price_compare_bars(
                 ha="center",
                 va="bottom",
                 fontsize=8,
-                fontweight="normal" if rect is bars[-1] else "normal",
+                fontweight="bold" if rect is bars[-1] else "normal",
             )
 
     _label_bars(b1, sel_prices)
@@ -1300,7 +1300,7 @@ def plot_price_rank_arrow(
     # 점/화살표(선택)
     ax.scatter(
         [base_p0, base_p1], [base_r0, base_r1],
-        s=110, marker='s',
+        s=110, marker='o',
         c=SEL_BAR_STYLE['face_color'],
         edgecolors=SEL_BAR_STYLE['edge_color'],
         linewidths=SEL_BAR_STYLE['linewidth'],
@@ -1336,10 +1336,10 @@ def plot_price_rank_arrow(
         xytext=base0_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="normal",
+        fontweight="bold",
         color=SEL_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=3,
+        zorder=4,
     )
     ax.annotate(
         _pt_label(str(last_year), base_p1, base_r1),
@@ -1347,10 +1347,10 @@ def plot_price_rank_arrow(
         xytext=base1_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="normal",
+        fontweight="bold",
         color=SEL_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=SEL_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=3,
+        zorder=4,
     )
     ax.annotate(
         _pt_label("2016", cmp_p0, cmp_r0),
@@ -1358,10 +1358,10 @@ def plot_price_rank_arrow(
         xytext=cmp0_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="normal",
+        fontweight="bold",
         color=CMP_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=3,
+        zorder=4,
     )
     ax.annotate(
         _pt_label(str(last_year), cmp_p1, cmp_r1),
@@ -1369,10 +1369,10 @@ def plot_price_rank_arrow(
         xytext=cmp1_off,
         textcoords="offset points",
         fontsize=10,
-        fontweight="normal",
+        fontweight="bold",
         color=CMP_BAR_STYLE["edge_color"],
         bbox=dict(boxstyle="round,pad=0.25", fc="white", ec=CMP_BAR_STYLE["edge_color"], alpha=0.78),
-        zorder=3,
+        zorder=4,
     )
 
     ax.set_title(f"가격-순위 이동(2016→{last_year})")
@@ -1911,118 +1911,239 @@ else:
                             all_ranks.append(float(rval))
                     unit_series.append((label, yrs, rs, color))
 
+                graph_mode = st.radio(
+                    "하단 비교 그래프",
+                    ["막대그래프(연도별 순위 경쟁)", "선그래프(연도별 순위 추이)"],
+                    index=0,
+                    horizontal=True,
+                    key="cmp3_rank_graph_mode",
+                )
+
                 if not all_years or not all_ranks:
                     st.warning("선택된 단지들에서 연도별 '압구정 전체 순위' 데이터를 찾지 못했습니다.")
+                
                 else:
-                    x_min, x_max = min(all_years), max(all_years)
-                    x_mid = (x_min + x_max) / 2.0
-
-                    from matplotlib import patheffects as pe
-
-                    def _pt_text(rank_v: float) -> str:
-                        """순위 라벨 텍스트(연도는 x축에 있으므로 숫자만 표시)."""
+                    # 그래프 모드: 막대 레이스(순위 경쟁) 또는 선그래프(순위 추이)
+                    if str(graph_mode).startswith("막대"):
                         try:
-                            r_i = int(round(float(rank_v)))
+                            import plotly.graph_objects as go
                         except Exception:
-                            r_i = int(rank_v) if rank_v is not None else 0
-                        return f"{r_i:,}위"
+                            st.warning("막대 레이스 그래프를 위해 plotly가 필요합니다. requirements.txt에 'plotly'를 추가해 주세요.")
+                            graph_mode = "선그래프(연도별 순위 추이)"
 
-                    def _annot_point(x: int, y: float, text: str, *, color: str, dx: float, dy: float, fontsize: int = 7):
-                        # dy가 양수면 포인트 위, 음수면 포인트 아래(화면 좌표 기준)
-                        va = "bottom" if dy >= 0 else "top"
-                        ann = ax.annotate(
-                            text,
-                            xy=(x, y),
-                            xytext=(dx, dy),
-                            textcoords="offset points",
-                            fontsize=fontsize,
-                            fontweight="normal",
-                            color=color,
-                            ha="center",
-                            va=va,
-                            zorder=6,
-                        )
-                        ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                    if str(graph_mode).startswith("막대"):
+                        # -----------------------
+                        # Bar Chart Race (연도별 순위 경쟁)
+                        # -----------------------
+                        total_n = int(len(df_num))
 
-                    # 선 + 마커(색상 고정)
-                    # 연도별 라벨 겹침 최소화: 각 연도에서 3개 단지 순위를 정렬해 서로 다른 높이로 배치
-                    x_ticks = sorted(set(all_years))
-                    ax.set_xticks(x_ticks)
-                    x_min_tick, x_max_tick = min(x_ticks), max(x_ticks)
-                    year_order = {}
-                    for y in x_ticks:
-                        items = []
-                        for si, (_lbl, _yrs, _rs, _c) in enumerate(unit_series):
-                            if y in _yrs:
-                                try:
-                                    j = _yrs.index(y)
-                                except Exception:
-                                    j = list(_yrs).index(y)
-                                items.append((si, _rs[j]))
-                        items = sorted(items, key=lambda t: t[1])  # 순위 값(작을수록 상위)
-                        year_order[y] = {si: pos for pos, (si, _v) in enumerate(items)}
+                        def _short_label(u: dict) -> str:
+                            return f"{u.get('complex','')} {u.get('pyeong_fmt','')}".strip()
 
-                    # 라벨 배치 규칙(연도별):
-                    # - 같은 연도에서 '순위가 가장 낮은(숫자 가장 큰)' 1개는 포인트 아래
-                    # - 나머지 2개는 포인트 위로, 서로 다른 높이/좌우로 분산
-                    dy_up = [10, 20]
-                    dx_up = [-4, 4]
-                    dy_down = -8
-                    dx_down = 0
+                        base_lbl = f"기준: {_short_label(base_rep)}"
+                        c1_lbl = f"비교1: {_short_label(rep1)}"
+                        c2_lbl = f"비교2: {_short_label(rep2)}"
 
-                    for i, (label, yrs, rs, color) in enumerate(unit_series):
-                        if len(yrs) < 2:
-                            continue
-                        ax.plot(yrs, rs, marker="o", linewidth=1.6, markersize=5, color=color, label=label, zorder=3)
+                        color_map = {
+                            base_lbl: COLORS[0],
+                            c1_lbl: COLORS[1],
+                            c2_lbl: COLORS[2],
+                        }
 
-                        # 모든 연도 라벨 표시(포인트 근처)
-                        for x, y in zip(yrs, rs):
-                            pos = year_order.get(x, {}).get(i, i)  # 0(상위) → 1 → 2(하위)
-                            if pos >= 2:
-                                dy, dx = dy_down, dx_down
-                            else:
-                                dy, dx = dy_up[pos], dx_up[pos]
+                        years_int = [int(y) for y in year_cols_sorted]
+                        rows = []
+                        for y in year_cols_sorted:
+                            yi = int(y)
+                            for lbl, ridx in [(base_lbl, int(base_rep["idx"])), (c1_lbl, int(rep1["idx"])), (c2_lbl, int(rep2["idx"]))]:
+                                rv = pd.to_numeric(ranks_by_year[y].at[ridx], errors="coerce")
+                                if pd.notna(rv):
+                                    r = float(rv)
+                                    score = (total_n - r + 1.0)  # 상위일수록 큰 값
+                                    rows.append({"year": yi, "label": lbl, "rank": r, "score": score})
 
-                            # 양 끝 연도는 화면 밖으로 나가지 않게 안쪽으로 소폭 밀기
-                            if x == x_min_tick:
-                                dx = abs(dx) + 6
-                            elif x == x_max_tick:
-                                dx = -(abs(dx) + 6)
+                        df_long = pd.DataFrame(rows)
 
-                            _annot_point(int(x), float(y), _pt_text(y), color=color, dx=dx, dy=dy, fontsize=7)
+                        if df_long.empty:
+                            st.warning("막대 레이스 그래프를 그릴 데이터가 없습니다.")
+                        else:
+                            def _bar_for_year(yy: int):
+                                d = df_long[df_long["year"] == yy].copy()
+                                d = d.sort_values("score", ascending=True)  # 아래→위: 점수 낮은(하위)→높은(상위)
+                                bar = go.Bar(
+                                    x=d["score"],
+                                    y=d["label"],
+                                    orientation="h",
+                                    marker=dict(color=[color_map.get(v, "#999999") for v in d["label"]]),
+                                    text=[f"{int(r):,}위" for r in d["rank"]],
+                                    textposition="outside",
+                                    cliponaxis=False,
+                                )
+                                return bar
 
-                    ax.set_title(f"{start_year} → {end_year} 연도별 압구정 전체 순위 추이 (3개 단지)", fontsize=16, fontweight="normal")
-                    ax.set_xlabel("연도", fontsize=12, fontweight="normal", labelpad=8)
-                    ax.set_ylabel("압구정 전체 순위", fontsize=12, fontweight="normal", labelpad=8)
+                            y0 = years_int[0]
+                            frames = [go.Frame(data=[_bar_for_year(yy)], name=str(yy)) for yy in years_int]
 
-                    ax.tick_params(axis="both", labelsize=9)
-                    for _t in (ax.get_xticklabels() + ax.get_yticklabels()):
-                        _t.set_fontweight("normal")
+                            fig_race = go.Figure(
+                                data=[_bar_for_year(y0)],
+                                layout=go.Layout(
+                                    title=f"{start_year} → {end_year} 연도별 압구정 전체 순위 경쟁 (3개 단지)",
+                                    xaxis=dict(title="상위 점수(높을수록 상위)", range=[0, max(df_long["score"].max(), 1.0) * 1.08]),
+                                    yaxis=dict(title="", automargin=True),
+                                    margin=dict(l=160, r=40, t=70, b=60),
+                                    height=520,
+                                    font=dict(size=12),
+                                    updatemenus=[
+                                        dict(
+                                            type="buttons",
+                                            direction="left",
+                                            x=0.01, y=1.18,
+                                            buttons=[
+                                                dict(
+                                                    label="Play",
+                                                    method="animate",
+                                                    args=[None, {"frame": {"duration": 700, "redraw": True},
+                                                                 "transition": {"duration": 200},
+                                                                 "fromcurrent": True}],
+                                                ),
+                                                dict(
+                                                    label="Pause",
+                                                    method="animate",
+                                                    args=[[None], {"frame": {"duration": 0, "redraw": False},
+                                                                   "mode": "immediate"}],
+                                                ),
+                                            ],
+                                        )
+                                    ],
+                                    sliders=[
+                                        dict(
+                                            x=0.01, y=1.06, len=0.98,
+                                            currentvalue=dict(prefix="연도: "),
+                                            steps=[
+                                                dict(
+                                                    method="animate",
+                                                    args=[[str(yy)], {"frame": {"duration": 0, "redraw": True},
+                                                                      "mode": "immediate"}],
+                                                    label=str(yy),
+                                                )
+                                                for yy in years_int
+                                            ],
+                                        )
+                                    ],
+                                ),
+                                frames=frames,
+                            )
 
-                    # y축(순위): 값이 작을수록 상위이므로 위쪽으로 오게 반전 + 라벨 공간 확보
-                    y_min, y_max = min(all_ranks), max(all_ranks)
-                    y_range = (y_max - y_min) if (y_max - y_min) != 0 else max(abs(y_max), 1.0)
-                    ax.set_ylim(y_min - y_range * 0.18, y_max + y_range * 0.10)
-                    ax.invert_yaxis()
+                            st.plotly_chart(fig_race, use_container_width=True)
+                    else:
+                        x_min, x_max = min(all_years), max(all_years)
+                        x_mid = (x_min + x_max) / 2.0
 
-                    ax.grid(True, alpha=0.25)
-                    ax.tick_params(axis="x", labelsize=9, pad=6)
-                    ax.tick_params(axis="y", labelsize=9)
+                        from matplotlib import patheffects as pe
 
-                    # 그래프 내 텍스트(제목/축/틱/범례) 엣지 적용
-                    ax.title.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
-                    ax.xaxis.label.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
-                    ax.yaxis.label.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                        def _pt_text(rank_v: float) -> str:
+                            """순위 라벨 텍스트(연도는 x축에 있으므로 숫자만 표시)."""
+                            try:
+                                r_i = int(round(float(rank_v)))
+                            except Exception:
+                                r_i = int(rank_v) if rank_v is not None else 0
+                            return f"{r_i:,}위"
 
-                    for _lab in (ax.get_xticklabels() + ax.get_yticklabels()):
-                        _lab.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                        def _annot_point(x: int, y: float, text: str, *, color: str, dx: float, dy: float, fontsize: int = 7):
+                            # dy가 양수면 포인트 위, 음수면 포인트 아래(화면 좌표 기준)
+                            va = "bottom" if dy >= 0 else "top"
+                            ann = ax.annotate(
+                                text,
+                                xy=(x, y),
+                                xytext=(dx, dy),
+                                textcoords="offset points",
+                                fontsize=fontsize,
+                                fontweight="normal",
+                                color=color,
+                                ha="center",
+                                va=va,
+                                zorder=6,
+                            )
+                            ann.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
 
-                    leg = ax.legend(loc="lower left", fontsize=8, framealpha=0.9, borderpad=0.3, labelspacing=0.3, handlelength=1.8, handletextpad=0.6, markerscale=0.9)
-                    if leg is not None:
-                        for _lt in leg.get_texts():
-                            _lt.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
-                    fig.tight_layout()
-                    st.pyplot(fig, use_container_width=True)
+                        # 선 + 마커(색상 고정)
+                        # 연도별 라벨 겹침 최소화: 각 연도에서 3개 단지 순위를 정렬해 서로 다른 높이로 배치
+                        x_ticks = sorted(set(all_years))
+                        ax.set_xticks(x_ticks)
+                        x_min_tick, x_max_tick = min(x_ticks), max(x_ticks)
+                        year_order = {}
+                        for y in x_ticks:
+                            items = []
+                            for si, (_lbl, _yrs, _rs, _c) in enumerate(unit_series):
+                                if y in _yrs:
+                                    try:
+                                        j = _yrs.index(y)
+                                    except Exception:
+                                        j = list(_yrs).index(y)
+                                    items.append((si, _rs[j]))
+                            items = sorted(items, key=lambda t: t[1])  # 순위 값(작을수록 상위)
+                            year_order[y] = {si: pos for pos, (si, _v) in enumerate(items)}
+
+                        # 라벨 배치 규칙(연도별):
+                        # - 같은 연도에서 '순위가 가장 낮은(숫자 가장 큰)' 1개는 포인트 아래
+                        # - 나머지 2개는 포인트 위로, 서로 다른 높이/좌우로 분산
+                        dy_up = [10, 20]
+                        dx_up = [-8, 8]
+                        dy_down = -14
+                        dx_down = 0
+
+                        for i, (label, yrs, rs, color) in enumerate(unit_series):
+                            if len(yrs) < 2:
+                                continue
+                            ax.plot(yrs, rs, marker="o", linewidth=1.6, markersize=5, color=color, label=label, zorder=3)
+
+                            # 모든 연도 라벨 표시(포인트 근처)
+                            for x, y in zip(yrs, rs):
+                                pos = year_order.get(x, {}).get(i, i)  # 0(상위) → 1 → 2(하위)
+                                if pos >= 2:
+                                    dy, dx = dy_down, dx_down
+                                else:
+                                    dy, dx = dy_up[pos], dx_up[pos]
+
+                                # 양 끝 연도는 화면 밖으로 나가지 않게 안쪽으로 소폭 밀기
+                                if x == x_min_tick:
+                                    dx = abs(dx) + 6
+                                elif x == x_max_tick:
+                                    dx = -(abs(dx) + 6)
+
+                                _annot_point(int(x), float(y), _pt_text(y), color=color, dx=dx, dy=dy, fontsize=7)
+
+                        ax.set_title(f"{start_year} → {end_year} 연도별 압구정 전체 순위 추이 (3개 단지)", fontsize=16, fontweight="normal")
+                        ax.set_xlabel("연도", fontsize=12, fontweight="normal", labelpad=8)
+                        ax.set_ylabel("압구정 전체 순위", fontsize=12, fontweight="normal", labelpad=8)
+
+                        ax.tick_params(axis="both", labelsize=9)
+                        for _t in (ax.get_xticklabels() + ax.get_yticklabels()):
+                            _t.set_fontweight("normal")
+
+                        # y축(순위): 값이 작을수록 상위이므로 위쪽으로 오게 반전 + 라벨 공간 확보
+                        y_min, y_max = min(all_ranks), max(all_ranks)
+                        y_range = (y_max - y_min) if (y_max - y_min) != 0 else max(abs(y_max), 1.0)
+                        ax.set_ylim(y_min - y_range * 0.18, y_max + y_range * 0.10)
+                        ax.invert_yaxis()
+
+                        ax.grid(True, alpha=0.25)
+                        ax.tick_params(axis="x", labelsize=9, pad=6)
+                        ax.tick_params(axis="y", labelsize=9)
+
+                        # 그래프 내 텍스트(제목/축/틱/범례) 엣지 적용
+                        ax.title.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                        ax.xaxis.label.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                        ax.yaxis.label.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+
+                        for _lab in (ax.get_xticklabels() + ax.get_yticklabels()):
+                            _lab.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+
+                        leg = ax.legend(loc="lower left", fontsize=8, framealpha=0.9, borderpad=0.3, labelspacing=0.3, handlelength=1.8, handletextpad=0.6, markerscale=0.9)
+                        if leg is not None:
+                            for _lt in leg.get_texts():
+                                _lt.set_path_effects([pe.withStroke(linewidth=0.3, foreground="black")])
+                        fig.tight_layout()
+                        st.pyplot(fig, use_container_width=True)
         else:
             if not can_compare:
                 st.caption("기준단지/비교단지 1/2의 구역·단지·평형을 모두 선택하면 [비교하기] 버튼이 활성화됩니다.")
