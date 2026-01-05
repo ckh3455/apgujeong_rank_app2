@@ -1583,7 +1583,11 @@ land_v = pd.to_numeric(pick_row[land_col], errors="coerce") if (pick_row is not 
 note_v = pick_row[note_col] if (pick_row is not None and note_col) else None
 
 st.subheader("선택 요약")
-st.caption(f"선택: {zone} / {dong}동 / {ho}호")
+pyeong_col = detect_pyeong_col(df_num)
+pyeong_v = pick_row[pyeong_col] if (pick_row is not None and pyeong_col) else pd.NA
+pyeong_txt = _fmt_pyeong(pyeong_v)
+
+st.caption(f"선택: {zone}/{pyeong_txt}/{dong}동/{ho}호")
 note_text = ""
 try:
     if note_v is not None and not pd.isna(note_v):
