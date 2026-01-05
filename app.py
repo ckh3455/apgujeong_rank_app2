@@ -1251,7 +1251,7 @@ def plot_price_compare_bars(
 # =========================
 # 메인
 # =========================
-st.title("압구정 공동주택 공시가격 랭킹")
+st.title("압구정 예비 권리가액 순위")
 st.markdown(APP_DESCRIPTION)
 st.markdown(PROMO_TEXT_HTML, unsafe_allow_html=True)
 
