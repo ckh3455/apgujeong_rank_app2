@@ -284,24 +284,23 @@ _validate_runtime_config()
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1100px; }
+      .block-container { padding-top: calc(3.0rem + env(safe-area-inset-top)); padding-bottom: 2rem; max-width: 1100px; }
       .small-note { color: rgba(49,51,63,.65); font-size: 0.92rem; }
     
       
       /* ===== Top title size (-20%) & prevent clipping ===== */
       h1 {
         font-size: 1.8rem !important;
-        line-height: 1.25 !important;
-        padding-top: 0.15rem !important;
-        margin-top: 0.20rem !important;
-        overflow: visible !important;
+        line-height: 1.35 !important;
+        margin: 0.2rem 0 0.6rem 0 !important;
+        padding: 0 !important;
       }
       @media (max-width: 640px){
         h1 {
           font-size: 1.55rem !important;
-          line-height: 1.25 !important;
-          padding-top: 0.20rem !important;
-          margin-top: 0.25rem !important;
+          line-height: 1.35 !important;
+          margin: 0.25rem 0 0.6rem 0 !important;
+          padding: 0 !important;
         }
       }
 /* DataFrame row height compact */
