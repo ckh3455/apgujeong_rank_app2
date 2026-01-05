@@ -115,7 +115,7 @@ PROMO_TEXT_HTML = """
 </style>
 <div class="promo-box">
   <div class="promo-title">📞 <b>압구정 원 부동산</b></div>
-  <div class="promo-line">압구정 재건축 전문 컨설팅 · <b>가액보다 순위가 중요한 압구정</b></div>
+  <div class="promo-line">압구정 재건축 전문 컨설팅 · <b>가열되는 순위경쟁  <div cla
   <div class="promo-line"><b>문의</b></div>
   <div class="promo-line">02-540-3334 / 최이사 Mobile 010-3065-1780</div>
   <div class="promo-small">압구정 미래가치 예측.</div>
@@ -1718,7 +1718,7 @@ else:
             return f"{u['zone']} / {u['complex']} / {u['pyeong_fmt']} / {u['dong']}동 / {floor_txt}"
 
         st.caption(
-            f"각 단지의 **선택한 평형**에서 **{last_year} 공시가격이 가장 높은 1개 동/호**를 대표로 자동 선택해 비교합니다."
+            f"각 단지의 **선택한 평형**에서 **{last_year} 공시가격이 가장 높은 1개 동/호**를 대표로 자동 선택해 3개 단지까지비교합니다."
         )
 
         # =========================
@@ -2066,7 +2066,7 @@ else:
                                 race_title = f"{start_year}→{end_year} 순위 경쟁 (3개 단지)"
                                 st.caption("Play 버튼 또는 하단 슬라이더로 연도별 확인")
 
-                            xaxis_title = "상위 점수" if is_mobile else "상위 점수(높을수록 상위)"
+                            xaxis_title = "상위 점수" if is_mobile else "상위 점수(숫자가 낮을수록 상위)"
                             race_height = 420 if is_mobile else 560
                             race_margin = dict(l=120, r=40, t=120, b=110) if is_mobile else dict(l=190, r=90, t=200, b=145)
                             y_tickfont = dict(size=13, family="Arial Black") if is_mobile else dict(size=15, family="Arial Black")
