@@ -347,7 +347,29 @@ st.markdown(
       }
       
 
-      /* ===== Compare buttons sky-blue (secondary) ===== */
+      
+
+      /* horizontal scroll wrapper for wide summary tables (mobile-safe) */
+      .summary-wrap{
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      table.summary-table thead th{
+        white-space: nowrap;
+      }
+      @media (max-width: 640px){
+        table.summary-table thead th{
+          padding: 6px 6px;
+          font-size: 0.82rem;
+        }
+        table.summary-table tbody th,
+        table.summary-table tbody td{
+          padding: 6px 6px;
+          font-size: 0.82rem;
+        }
+      }
+/* ===== Compare buttons sky-blue (secondary) ===== */
       button[data-testid="baseButton-secondary"] {
         background-color: #87CEEB !important;
         color: #08324a !important;
@@ -1836,34 +1858,68 @@ else:
                 # 상단 요약(짧은 표기)
                 st.markdown(
                     f"<div style='text-align:center; font-weight:700; margin:4px 0 10px 0;'>"
-                    f"기준: {base_nm} &nbsp;&nbsp;|&nbsp;&nbsp; 비교1: {c1_nm} &nbsp;&nbsp;|&nbsp;&nbsp; 비교2: {c2_nm}"
+                    f"단지: {base_nm} &nbsp;&nbsp;|&nbsp;&nbsp; {c1_nm} &nbsp;&nbsp;|&nbsp;&nbsp; {c2_nm}"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
 
-                df_tbl = pd.DataFrame(
-                    {
-                        f"{base_nm} 가격(억)": [float(base_rep["price_2016"]), float(base_rep["price_last"])],
-                        f"{base_nm} 순위": [int(base_rep["rank_2016"]), int(base_rep["rank_last"])],
-                        f"{c1_nm} 가격(억)": [float(rep1["price_2016"]), float(rep1["price_last"])],
-                        f"{c1_nm} 순위": [int(rep1["rank_2016"]), int(rep1["rank_last"])],
-                        f"{c2_nm} 가격(억)": [float(rep2["price_2016"]), float(rep2["price_last"])],
-                        f"{c2_nm} 순위": [int(rep2["rank_2016"]), int(rep2["rank_last"])],
-                    },
-                    index=[y0, y1],
-                )
-                df_tbl.index.name = "연도"
+                def _f_price(v) -> str:
+                    try:
+                        return f"{float(v):.2f}"
+                    except Exception:
+                        return "-"
+                def _f_rank(v) -> str:
+                    try:
+                        return f"{int(v):,}"
+                    except Exception:
+                        return "-"
 
-                disp = df_tbl.copy()
-                for c in disp.columns:
-                    if "가격" in c:
-                        disp[c] = disp[c].map(lambda x: f"{float(x):.2f}")
-                    else:
-                        disp[c] = disp[c].map(lambda x: f"{int(x):,}")
+                # 2행 헤더(단지명/평형만 상단에 노출)
+                rows_tbl = [
+                    (
+                        y0,
+                        _f_price(base_rep["price_2016"]), _f_rank(base_rep["rank_2016"]),
+                        _f_price(rep1["price_2016"]), _f_rank(rep1["rank_2016"]),
+                        _f_price(rep2["price_2016"]), _f_rank(rep2["rank_2016"]),
+                    ),
+                    (
+                        y1,
+                        _f_price(base_rep["price_last"]), _f_rank(base_rep["rank_last"]),
+                        _f_price(rep1["price_last"]), _f_rank(rep1["rank_last"]),
+                        _f_price(rep2["price_last"]), _f_rank(rep2["rank_last"]),
+                    ),
+                ]
 
-                html = disp.to_html(classes="summary-table", escape=False)
+                html = f"""
+                <div class="summary-wrap">
+                  <table class="summary-table">
+                    <thead>
+                      <tr>
+                        <th rowspan="2">연도</th>
+                        <th colspan="2">{base_nm}</th>
+                        <th colspan="2">{c1_nm}</th>
+                        <th colspan="2">{c2_nm}</th>
+                      </tr>
+                      <tr>
+                        <th>가격(억)</th><th>순위</th>
+                        <th>가격(억)</th><th>순위</th>
+                        <th>가격(억)</th><th>순위</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                """
+                for (yy, bp, br, c1p, c1r, c2p, c2r) in rows_tbl:
+                    html += (
+                        f"<tr>"
+                        f"<th>{yy}</th>"
+                        f"<td>{bp}</td><td>{br}</td>"
+                        f"<td>{c1p}</td><td>{c1r}</td>"
+                        f"<td>{c2p}</td><td>{c2r}</td>"
+                        f"</tr>"
+                    )
+                html += """</tbody></table></div>"""
+
                 st.markdown(html, unsafe_allow_html=True)
-
 # --- 3개 단지를 하나의 화살표 그래프로 표현 ---
                 import matplotlib.pyplot as plt
 
@@ -1872,11 +1928,10 @@ else:
 
                 fig, ax = plt.subplots()
 
-                base_leg = f"기준단지: {legend_unit_label(base_rep['zone'], base_rep['pyeong_raw'], base_rep['dong'], base_rep['ho'])}"
-                cmp1_leg = f"비교단지 1: {legend_unit_label(rep1['zone'], rep1['pyeong_raw'], rep1['dong'], rep1['ho'])}"
-                cmp2_leg = f"비교단지 2: {legend_unit_label(rep2['zone'], rep2['pyeong_raw'], rep2['dong'], rep2['ho'])}"
-
-                # 연도 정렬(전체 연도 표시)
+                # 레전드 라벨은 길이를 줄여(모바일/데스크탑 공통) 단지명+평형만 표시
+                base_leg = base_nm
+                cmp1_leg = c1_nm
+                cmp2_leg = c2_nm# 연도 정렬(전체 연도 표시)
                 year_cols_sorted = sorted(year_cols, key=lambda s: int(s))
                 start_year = str(year_cols_sorted[0])
                 end_year = str(year_cols_sorted[-1])
@@ -1940,9 +1995,19 @@ else:
                         def _short_label(u: dict) -> str:
                             return f"{u.get('complex','')} {u.get('pyeong_fmt','')}".strip()
 
-                        base_lbl = f"기준: {_short_label(base_rep)}"
-                        c1_lbl = f"비교1: {_short_label(rep1)}"
-                        c2_lbl = f"비교2: {_short_label(rep2)}"
+                        base_lbl = _short_label(base_rep)
+                        c1_lbl = _short_label(rep1)
+                        c2_lbl = _short_label(rep2)
+
+                        # 라벨이 비어있거나 중복되면 최소한의 구분자를 붙입니다.
+                        labels = [base_lbl or "기준", c1_lbl or "비교1", c2_lbl or "비교2"]
+                        seen = {}
+                        uniq = []
+                        for lbl in labels:
+                            k = lbl
+                            seen[k] = seen.get(k, 0) + 1
+                            uniq.append(k if seen[k] == 1 else f"{k}({seen[k]})")
+                        base_lbl, c1_lbl, c2_lbl = uniq
 
                         color_map = {
                             base_lbl: COLORS[0],
@@ -1992,20 +2057,34 @@ else:
                             y0 = years_int[0]
                             frames = [go.Frame(data=[_bar_for_year(yy)], name=str(yy)) for yy in years_int]
 
+                            is_mobile = infer_device_type() == "mobile"
+
+                            race_title = f"{start_year} → {end_year} 연도별 압구정 전체 순위 경쟁 (3개 단지)"
+                            if is_mobile:
+                                race_title = f"{start_year}→{end_year} 순위 경쟁 (3개 단지)"
+                                st.caption("Play 버튼 또는 하단 슬라이더로 연도별 확인")
+
+                            xaxis_title = "상위 점수" if is_mobile else "상위 점수(높을수록 상위)"
+                            race_height = 420 if is_mobile else 560
+                            race_margin = dict(l=120, r=40, t=120, b=110) if is_mobile else dict(l=190, r=90, t=200, b=145)
+                            y_tickfont = dict(size=13, family="Arial Black") if is_mobile else dict(size=15, family="Arial Black")
+                            slider_y = -0.18 if is_mobile else -0.22
+                            buttons_y = 1.08 if is_mobile else 1.14
+                            title_y = 0.96 if is_mobile else 0.98
                             fig_race = go.Figure(
                                 data=[_bar_for_year(y0)],
                                 layout=go.Layout(
-                                    title=dict(text=f"{start_year} → {end_year} 연도별 압구정 전체 순위 경쟁 (3개 단지)<br>(Play 버튼 또는 하단 슬라이더로 연도별 확인)", x=0.0, xanchor="left", y=0.98, yanchor="top"),
-                                    xaxis=dict(title="상위 점수(높을수록 상위)", range=[0, max(df_long["score"].max(), 1.0) * 1.12], tickfont=dict(size=12), titlefont=dict(size=13)),
-                                    yaxis=dict(title="", automargin=True, categoryorder="array", categoryarray=cat_order, tickfont=dict(size=15, family="Arial Black")),
-                                    margin=dict(l=190, r=90, t=200, b=145),
-                                    height=560,
+                                    title=dict(text=race_title, x=0.0, xanchor="left", y=title_y, yanchor="top"),
+                                    xaxis=dict(title=xaxis_title, range=[0, max(df_long["score"].max(), 1.0) * 1.12], tickfont=dict(size=12), titlefont=dict(size=13)),
+                                    yaxis=dict(title="", automargin=True, categoryorder="array", categoryarray=cat_order, tickfont=y_tickfont),
+                                    margin=race_margin,
+                                    height=race_height,
                                     font=dict(size=12, family="Malgun Gothic"),
                                     updatemenus=[
                                         dict(
                                             type="buttons",
                                             direction="left",
-                                            x=0.01, y=1.14, xanchor="left", yanchor="bottom",
+                                            x=0.01, y=buttons_y, xanchor="left", yanchor="bottom",
                                             buttons=[
                                                 dict(
                                                     label="Play",
@@ -2025,7 +2104,7 @@ else:
                                     ],
                                     sliders=[
                                         dict(
-                                            x=0.01, y=-0.22, len=0.98,
+                                            x=0.01, y=slider_y, len=0.98,
                                             currentvalue=dict(prefix="연도: ", font=dict(size=14, family="Arial Black")),
                                             steps=[
                                                 dict(
