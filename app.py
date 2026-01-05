@@ -288,10 +288,21 @@ st.markdown(
       .small-note { color: rgba(49,51,63,.65); font-size: 0.92rem; }
     
       
-      /* ===== Top title size (about -20%) ===== */
-      h1 { font-size: 1.8rem !important; }
+      /* ===== Top title size (-20%) & prevent clipping ===== */
+      h1 {
+        font-size: 1.8rem !important;
+        line-height: 1.25 !important;
+        padding-top: 0.15rem !important;
+        margin-top: 0.20rem !important;
+        overflow: visible !important;
+      }
       @media (max-width: 640px){
-        h1 { font-size: 1.55rem !important; }
+        h1 {
+          font-size: 1.55rem !important;
+          line-height: 1.25 !important;
+          padding-top: 0.20rem !important;
+          margin-top: 0.25rem !important;
+        }
       }
 /* DataFrame row height compact */
       div[data-testid="stDataFrame"] .ag-row { height: 24px !important; }
