@@ -109,9 +109,9 @@ PROMO_TEXT_HTML = """
     background: rgba(250,250,252,.75);
     margin: 10px 0 18px 0;
   }
-  .promo-title{ font-size: 1.05rem; margin-bottom: 6px; }
-  .promo-line{ font-size: 0.98rem; line-height: 1.35rem; }
-  .promo-small{ margin-top: 6px; font-size: 0.9rem; color: rgba(49,51,63,.75); }
+  .promo-title{ font-size: 0.84rem; margin-bottom: 6px; }
+  .promo-line{ font-size: 0.78rem; line-height: 1.08rem; }
+  .promo-small{ margin-top: 6px; font-size: 0.72rem; color: rgba(49,51,63,.75); }
 </style>
 <div class="promo-box">
   <div class="promo-title">📞 <b>압구정 원 부동산</b></div>
@@ -287,7 +287,13 @@ st.markdown(
       .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1100px; }
       .small-note { color: rgba(49,51,63,.65); font-size: 0.92rem; }
     
-      /* DataFrame row height compact */
+      
+      /* ===== Top title size (about -20%) ===== */
+      h1 { font-size: 1.8rem !important; }
+      @media (max-width: 640px){
+        h1 { font-size: 1.55rem !important; }
+      }
+/* DataFrame row height compact */
       div[data-testid="stDataFrame"] .ag-row { height: 24px !important; }
       div[data-testid="stDataFrame"] .ag-cell { line-height: 22px !important; padding-top: 2px !important; padding-bottom: 2px !important; }
       div[data-testid="stDataFrame"] .ag-header-cell { padding-top: 2px !important; padding-bottom: 2px !important; }
@@ -295,6 +301,8 @@ st.markdown(
       .stDataFrame .ag-row { height: 24px !important; }
       .stDataFrame .ag-cell { line-height: 22px !important; padding-top: 2px !important; padding-bottom: 2px !important; }
       .stDataFrame .ag-header-cell { padding-top: 2px !important; padding-bottom: 2px !important; }
+
+      
 
 
       /* ===== HTML rank table ===== */
@@ -1252,7 +1260,7 @@ def plot_price_compare_bars(
 # 메인
 # =========================
 st.title("압구정 예비 권리가액 랭킹")
-st.markdown(APP_DESCRIPTION)
+st.caption(APP_DESCRIPTION)
 st.markdown(PROMO_TEXT_HTML, unsafe_allow_html=True)
 
 try:
