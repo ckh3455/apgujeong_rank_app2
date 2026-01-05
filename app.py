@@ -115,7 +115,7 @@ PROMO_TEXT_HTML = """
 </style>
 <div class="promo-box">
   <div class="promo-title">📞 <b>압구정 원 부동산</b></div>
-  <div class="promo-line">압구정 재건축 전문 컨설팅 · <b>가열되는 순위경쟁  <div cla
+  <div class="promo-line">압구정 재건축 전문 컨설팅 · <b>가액보다 순위가 중요한 압구정</b></div>
   <div class="promo-line"><b>문의</b></div>
   <div class="promo-line">02-540-3334 / 최이사 Mobile 010-3065-1780</div>
   <div class="promo-small">압구정 미래가치 예측.</div>
@@ -1251,7 +1251,7 @@ def plot_price_compare_bars(
 # =========================
 # 메인
 # =========================
-st.title("압구정 예비 권리가액 순위")
+st.title("압구정 공동주택 공시가격 랭킹")
 st.markdown(APP_DESCRIPTION)
 st.markdown(PROMO_TEXT_HTML, unsafe_allow_html=True)
 
@@ -1536,6 +1536,7 @@ def _find_first_col(df_: pd.DataFrame, candidates: list[str]) -> str | None:
 
 area_col = _find_first_col(df_num, ["전용면적(㎡)", "전용면적", "전용면적  (㎡).", "전용면적 (㎡)", "전용면적㎡"])
 land_col = _find_first_col(df_num, ["대지지분(평)", "대지지분", "대지지분    (평)", "대지지분 (평)", "대지지분평"])
+note_col = _find_first_col(df_num, ["특기사항", "특기 사항", "비고", "Remarks"])
 
 def _fmt_num(v, fmt: str = "{:.2f}") -> str:
     try:
@@ -1561,16 +1562,30 @@ all_rank_2025_v = str(all_rank_2025.iloc[0]) if len(all_rank_2025) else "-"
 
 area_v = pd.to_numeric(pick_row[area_col], errors="coerce") if (pick_row is not None and area_col) else pd.NA
 land_v = pd.to_numeric(pick_row[land_col], errors="coerce") if (pick_row is not None and land_col) else pd.NA
+note_v = pick_row[note_col] if (pick_row is not None and note_col) else None
 
 st.subheader("선택 요약")
 st.caption(f"선택: {zone} / {dong}동 / {ho}호")
+note_text = ""
+try:
+    if note_v is not None and not pd.isna(note_v):
+        _s = str(note_v).strip()
+        if _s and _s.lower() != "nan":
+            note_text = re.sub(r"\s+", " ", _s)
+except Exception:
+    note_text = ""
+
+extra_note = f" / **특기사항** {note_text}" if note_text else ""
+
 st.markdown(
     f"**2025 공시가격** {_fmt_num(price_2025_v, '{:.2f}')}(억) / "
     f"**구역내 순위** {zone_rank_2025_v} / "
     f"**압구정 전체순위** {all_rank_2025_v} / "
     f"**전용면적** {_fmt_num(area_v, '{:.2f}')} (㎡) / "
     f"**대지지분** {_fmt_num(land_v, '{:.2f}')} (평)"
+    f"{extra_note}"
 )
+
 
 st.divider()
 
@@ -1718,7 +1733,7 @@ else:
             return f"{u['zone']} / {u['complex']} / {u['pyeong_fmt']} / {u['dong']}동 / {floor_txt}"
 
         st.caption(
-            f"각 단지의 **선택한 평형**에서 **{last_year} 공시가격이 가장 높은 1개 동/호**를 대표로 자동 선택해 3개 단지까지비교합니다."
+            f"각 단지의 **선택한 평형**에서 **{last_year} 공시가격이 가장 높은 1개 동/호**를 대표로 자동 선택해 비교합니다."
         )
 
         # =========================
@@ -2066,7 +2081,7 @@ else:
                                 race_title = f"{start_year}→{end_year} 순위 경쟁 (3개 단지)"
                                 st.caption("Play 버튼 또는 하단 슬라이더로 연도별 확인")
 
-                            xaxis_title = "상위 점수" if is_mobile else "상위 점수(숫자가 낮을수록 상위)"
+                            xaxis_title = "상위 점수" if is_mobile else "상위 점수(높을수록 상위)"
                             race_height = 420 if is_mobile else 560
                             race_margin = dict(l=120, r=40, t=120, b=110) if is_mobile else dict(l=190, r=90, t=200, b=145)
                             y_tickfont = dict(size=13, family="Arial Black") if is_mobile else dict(size=15, family="Arial Black")
