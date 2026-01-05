@@ -115,7 +115,7 @@ PROMO_TEXT_HTML = """
 </style>
 <div class="promo-box">
   <div class="promo-title">📞 <b>압구정 원 부동산</b></div>
-  <div class="promo-line">압구정 재건축 전문 컨설팅 · <b>가액보다 순위가 중요한 압구정</b></div>
+  <div class="promo-line">압구정 재건축 전문 컨설팅 · <b>가열되는 순위경쟁  <div clas
   <div class="promo-line"><b>문의</b></div>
   <div class="promo-line">02-540-3334 / 최이사 Mobile 010-3065-1780</div>
   <div class="promo-small">압구정 미래가치 예측.</div>
